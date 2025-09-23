@@ -21,7 +21,7 @@
         /* Sidebar Navigation */
         .sidebar {
             width: 250px;
-            background-color: #2c3e50;
+            background-color: #767ae6;
             color: white;
             padding: 20px 0;
             position: fixed;
@@ -31,12 +31,28 @@
         }
 
         .sidebar h1 {
-            padding: 0 20px 30px 20px;
-            font-size: 1.5rem;
-            border-bottom: 1px solid #34495e;
-            margin-bottom: 20px;
+            padding: 0 20px 5px 20px;
+            font-size: 1.2rem;                                  /* smaller than default 1.5rem */
+            border-bottom: 1px solid #767ae6;
+            margin-bottom: 10px;
             text-align: center;
         }
+
+        .sidebar-pic {
+            display: block;
+            margin: 0 auto 10px auto;
+            width: 150px;
+            height: auto;
+        }
+
+        .sidebar-footer {
+            display: block;
+            margin: 300px auto 0 auto;
+            width: 250px;
+            height: auto;
+        }
+
+
 
         .nav-item {
             display: block;
@@ -53,12 +69,12 @@
         }
 
         .nav-item:hover {
-            background-color: #34495e;
+            background-color: #c1c3ff;
         }
 
         .nav-item.active {
-            background-color: #3498db;
-            border-right: 4px solid #2980b9;
+            background-color: #b3b5ff;
+            border-right: 4px solid #b3b5ff;
         }
 
         /* Main Content Area */
@@ -260,7 +276,7 @@
         }
 
         .progress-new { background: #e74c3c; color: white; }
-        .progress-recognize { background: #f39c12; color: white; }
+        .progress-recognise { background: #f39c12; color: white; }
         .progress-recall { background: #3498db; color: white; }
         .progress-confident { background: #27ae60; color: white; }
         .progress-basic { background: #e74c3c; color: white; }
@@ -457,25 +473,31 @@
 <body>
     <!-- Sidebar Navigation -->
     <nav class="sidebar">
-        <h1>Thai Learning</h1>
-        <button class="nav-item active" onclick="showDashboard()">📊 Dashboard</button>
-        <button class="nav-item" onclick="showVocabulary()">📚 Vocabulary</button>
-        <button class="nav-item" onclick="showPhrases()">💬 Phrasebook</button>
+        <h1>Thai Handbook</h1>
+
+        <img src="Images/book.png" alt="Thai Handbook Pic" class="sidebar-pic">
+
+        <button class="nav-item active" onclick="showDashboard()">🏠 Home</button>
+        <button class="nav-item" onclick="showVocabulary()">📚 Vocab</button>
+        <button class="nav-item" onclick="showPhrases()">💬 Phrases</button>
         <button class="nav-item" onclick="showTemplates()">📝 Templates</button>
         <button class="nav-item" onclick="showCategories()">🏷️ Categories</button>
+
+        <img src="images/Book row.png" alt="Footer Image" class="sidebar-footer">
+
     </nav>
 
     <!-- Main Content Area -->
     <main class="main-content">
         <div class="content-header">
-            <h2 id="page-title">Dashboard</h2>
+            <h2 id="page-title">🏠 Home</h2>
         </div>
         
         <div class="content-body" id="main-content">
             <!-- Dashboard Content -->
             <div class="dashboard-welcome">
-                <h1>Welcome to Your Thai Learning Journey</h1>
-                <p>Track your vocabulary, phrases, and sentence templates all in one place</p>
+                <h1>Welcome to Joey's Thai Handbook</h1>
+                <p>Lets actually be a confident billingual!</p>
             </div>
 
             <div class="dashboard-stats">
@@ -534,7 +556,7 @@
 
         function showDashboard() {
             setActiveNav(event.target);
-            document.getElementById('page-title').textContent = 'Dashboard';
+            document.getElementById('page-title').textContent = '🏠 Home';
             document.getElementById('main-content').innerHTML = `
                 <div class="dashboard-welcome">
                     <h1>Welcome to Your Thai Learning Journey</h1>
@@ -574,7 +596,7 @@
 
         function showVocabulary() {
             setActiveNav(event.target);
-            document.getElementById('page-title').textContent = 'Vocabulary Manager';
+            document.getElementById('page-title').textContent = 'Vocab Book';
             document.getElementById('main-content').innerHTML = `
                 <div class="vocab-header">
                     <button class="action-btn" onclick="showAddWordForm()">+ Add New Word</button>
@@ -587,7 +609,7 @@
                         <select id="progress-filter" onchange="filterVocabulary()">
                             <option value="">All Progress Levels</option>
                             <option value="new">New</option>
-                            <option value="recognize">Recognize</option>
+                            <option value="recognise">Recognise</option>
                             <option value="recall">Recall</option>
                             <option value="confident">Confident</option>
                         </select>
@@ -617,7 +639,7 @@
                             
                             <select id="word-progress" required>
                                 <option value="new">New</option>
-                                <option value="recognize">Recognize</option>
+                                <option value="recognise">Recognise</option>
                                 <option value="recall">Recall</option>
                                 <option value="confident">Confident</option>
                             </select>
@@ -645,7 +667,7 @@
                             
                             <select id="edit-word-progress" required>
                                 <option value="new">New</option>
-                                <option value="recognize">Recognize</option>
+                                <option value="recognise">Recognise</option>
                                 <option value="recall">Recall</option>
                                 <option value="confident">Confident</option>
                             </select>
@@ -675,7 +697,7 @@
                         <select id="phrase-progress-filter" onchange="filterPhrases()">
                             <option value="">All Progress Levels</option>
                             <option value="new">New</option>
-                            <option value="recognize">Recognize</option>
+                            <option value="recognise">Recognise</option>
                             <option value="recall">Recall</option>
                             <option value="confident">Confident</option>
                         </select>
@@ -705,7 +727,7 @@
                             
                             <select id="phrase-progress" required>
                                 <option value="new">New</option>
-                                <option value="recognize">Recognize</option>
+                                <option value="recognise">Recognise</option>
                                 <option value="recall">Recall</option>
                                 <option value="confident">Confident</option>
                             </select>
@@ -733,7 +755,7 @@
                             
                             <select id="edit-phrase-progress" required>
                                 <option value="new">New</option>
-                                <option value="recognize">Recognize</option>
+                                <option value="recognise">Recognise</option>
                                 <option value="recall">Recall</option>
                                 <option value="confident">Confident</option>
                             </select>
