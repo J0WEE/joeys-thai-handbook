@@ -46,9 +46,13 @@
         }
 
         .sidebar-footer {
+            position: absolute; /* anchor to bottom of fixed sidebar */
+            bottom: 20px;
+            left: 0;
+            right: 0;
+            margin: 0 auto;
             display: block;
-            margin: 200px auto 0 auto;
-            width: 250px;
+            width: 180px;
             height: auto;
         }
 
@@ -483,7 +487,7 @@
         <button class="nav-item" onclick="showTemplates()">📝 Templates</button>
         <button class="nav-item" onclick="showCategories()">🏷️ Categories</button>
 
-        <img src="images/Book row.png" alt="Footer Image" class="sidebar-footer">
+        <img src="Images/Book-row.png" alt="Footer Image" class="sidebar-footer">
 
     </nav>
 
