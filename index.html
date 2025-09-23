@@ -874,8 +874,8 @@
     }
 
     window.showDashboard = function() {
-        setActiveNav(event.target);
-        document.getElementById('page-title').textContent = 'Dashboard';
+        setActiveNav(document.querySelector('.nav-item'));
+        document.getElementById('page-title').textContent = '🏠 Home';
         document.getElementById('main-content').innerHTML = `
             <div class="dashboard-welcome">
                 <h1>Welcome to Joey's Thai Handbook</h1>
@@ -885,7 +885,7 @@
             <div class="dashboard-stats">
                 <div class="stat-card">
                     <h3 id="vocab-count">${vocabulary.length}</h3>
-                    <p>Vocabulary Words</p>
+                    <p>Vocab Words</p>
                 </div>
                 <div class="stat-card">
                     <h3 id="phrase-count">${phrases.length}</h3>
