@@ -425,6 +425,36 @@
             resize: vertical;
         }
 
+        /* Loading and Error States */
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #7f8c8d;
+        }
+
+        .error {
+            background: #e74c3c;
+            color: white;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+
+        .action-btn:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
+
+        .card-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .category-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
         /* Responsive Design */
         @media (max-width: 768px) {
             .sidebar {
@@ -487,18 +517,366 @@
         <button class="nav-item" onclick="showTemplates()">📝 Templates</button>
         <button class="nav-item" onclick="showCategories()">🏷️ Categories</button>
 
-        <img src="Images/Book-row.png" alt="Footer Image" class="sidebar-footer">
+    <img src="Images/book-row.png" alt="Footer Image" class="sidebar-footer">
 
     </nav>
 
     <!-- Main Content Area -->
     <main class="main-content">
         <div class="content-header">
-            <h2 id="page-title">🏠 Home</h2>
+            <h2 id="page-title">Dashboard</h2>
         </div>
         
         <div class="content-body" id="main-content">
-            <!-- Dashboard Content -->
+            <div class="loading">Loading...</div>
+        </div>
+    </main>
+
+    <!-- Firebase SDK -->
+<script type="module">
+    // Import Firebase modules
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+    import { 
+        getFirestore, 
+        collection, 
+        addDoc, 
+        updateDoc, 
+        deleteDoc, 
+        doc, 
+        getDocs,
+        onSnapshot,
+        query,
+        orderBy 
+    } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+
+    // TODO: Replace with your Firebase config
+    const firebaseConfig = {
+        apiKey: "AIzaSyD4MxUq4-wYegdyi-djyclsEOtMI_Zd6sU",
+        authDomain: "joeys-thai-handbook.firebaseapp.com",
+        projectId: "joeys-thai-handbook",
+        storageBucket: "joeys-thai-handbook.firebasestorage.app",
+        messagingSenderId: "243508048527",
+        appId: "1:243508048527:web:3b47165f6d1c2066f336fa",
+        measurementId: "G-6B1LP117YN"
+    };
+
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    // Global variables
+    let vocabulary = [];
+    let phrases = [];
+    let templates = [];
+    let categories = [];
+    let isLoading = false;
+
+    // Firebase helper functions
+    async function loadAllData() {
+        isLoading = true;
+        try {
+            showLoading();
+            
+            // Load all collections in parallel
+            const [vocabSnapshot, phraseSnapshot, templateSnapshot, categorySnapshot] = await Promise.all([
+                getDocs(collection(db, 'vocabulary')),
+                getDocs(collection(db, 'phrases')),
+                getDocs(collection(db, 'templates')),
+                getDocs(collection(db, 'categories'))
+            ]);
+
+            vocabulary = vocabSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            phrases = phraseSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            templates = templateSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            categories = categorySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+            // If no categories exist, create default ones
+            if (categories.length === 0) {
+                await createDefaultCategories();
+            }
+
+            console.log('Data loaded:', { vocabulary: vocabulary.length, phrases: phrases.length, templates: templates.length, categories: categories.length });
+            
+        } catch (error) {
+            console.error('Error loading data:', error);
+            showError('Failed to load data. Please refresh the page.');
+        } finally {
+            isLoading = false;
+            hideLoading();
+        }
+    }
+
+    async function createDefaultCategories() {
+        const defaultCategories = [
+            { name: 'Food', description: 'Food and dining related words' },
+            { name: 'Travel', description: 'Travel and transportation' },
+            { name: 'Daily Life', description: 'Everyday conversation' }
+        ];
+
+        for (const category of defaultCategories) {
+            try {
+                const docRef = await addDoc(collection(db, 'categories'), category);
+                categories.push({ id: docRef.id, ...category });
+            } catch (error) {
+                console.error('Error creating default category:', error);
+            }
+        }
+    }
+
+    function showLoading() {
+        const content = document.getElementById('main-content');
+        if (content) {
+            content.innerHTML = '<div class="loading">Loading...</div>';
+        }
+    }
+
+    function hideLoading() {
+        // This will be handled by individual page functions
+    }
+
+    function showError(message) {
+        const content = document.getElementById('main-content');
+        if (content) {
+            content.innerHTML = `<div class="error">${message}</div>`;
+        }
+    }
+
+    // Vocabulary functions
+    async function addWordToFirebase(wordData) {
+        try {
+            const docRef = await addDoc(collection(db, 'vocabulary'), {
+                thai: wordData.thai,
+                pronunciation: wordData.pronunciation,
+                translation: wordData.translation,
+                example: wordData.example || '',
+                category: wordData.category,
+                progress: wordData.progress,
+                createdAt: new Date()
+            });
+            
+            const newWord = { id: docRef.id, ...wordData, createdAt: new Date() };
+            vocabulary.push(newWord);
+            return newWord;
+        } catch (error) {
+            console.error('Error adding word:', error);
+            throw error;
+        }
+    }
+
+    async function updateWordInFirebase(wordId, wordData) {
+        try {
+            await updateDoc(doc(db, 'vocabulary', wordId), {
+                thai: wordData.thai,
+                pronunciation: wordData.pronunciation,
+                translation: wordData.translation,
+                example: wordData.example || '',
+                category: wordData.category,
+                progress: wordData.progress,
+                updatedAt: new Date()
+            });
+
+            const wordIndex = vocabulary.findIndex(w => w.id === wordId);
+            if (wordIndex !== -1) {
+                vocabulary[wordIndex] = { id: wordId, ...wordData, updatedAt: new Date() };
+            }
+        } catch (error) {
+            console.error('Error updating word:', error);
+            throw error;
+        }
+    }
+
+    async function deleteWordFromFirebase(wordId) {
+        try {
+            await deleteDoc(doc(db, 'vocabulary', wordId));
+            vocabulary = vocabulary.filter(w => w.id !== wordId);
+        } catch (error) {
+            console.error('Error deleting word:', error);
+            throw error;
+        }
+    }
+
+    // Phrase functions
+    async function addPhraseToFirebase(phraseData) {
+        try {
+            const docRef = await addDoc(collection(db, 'phrases'), {
+                thai: phraseData.thai,
+                pronunciation: phraseData.pronunciation,
+                translation: phraseData.translation,
+                context: phraseData.context || '',
+                category: phraseData.category,
+                progress: phraseData.progress,
+                createdAt: new Date()
+            });
+            
+            const newPhrase = { id: docRef.id, ...phraseData, createdAt: new Date() };
+            phrases.push(newPhrase);
+            return newPhrase;
+        } catch (error) {
+            console.error('Error adding phrase:', error);
+            throw error;
+        }
+    }
+
+    async function updatePhraseInFirebase(phraseId, phraseData) {
+        try {
+            await updateDoc(doc(db, 'phrases', phraseId), {
+                thai: phraseData.thai,
+                pronunciation: phraseData.pronunciation,
+                translation: phraseData.translation,
+                context: phraseData.context || '',
+                category: phraseData.category,
+                progress: phraseData.progress,
+                updatedAt: new Date()
+            });
+
+            const phraseIndex = phrases.findIndex(p => p.id === phraseId);
+            if (phraseIndex !== -1) {
+                phrases[phraseIndex] = { id: phraseId, ...phraseData, updatedAt: new Date() };
+            }
+        } catch (error) {
+            console.error('Error updating phrase:', error);
+            throw error;
+        }
+    }
+
+    async function deletePhraseFromFirebase(phraseId) {
+        try {
+            await deleteDoc(doc(db, 'phrases', phraseId));
+            phrases = phrases.filter(p => p.id !== phraseId);
+        } catch (error) {
+            console.error('Error deleting phrase:', error);
+            throw error;
+        }
+    }
+
+    // Template functions
+    async function addTemplateToFirebase(templateData) {
+        try {
+            const docRef = await addDoc(collection(db, 'templates'), {
+                patternThai: templateData.patternThai,
+                patternPronunciation: templateData.patternPronunciation,
+                example: templateData.example || '',
+                notes: templateData.notes || '',
+                category: templateData.category,
+                complexity: templateData.complexity,
+                createdAt: new Date()
+            });
+            
+            const newTemplate = { id: docRef.id, ...templateData, createdAt: new Date() };
+            templates.push(newTemplate);
+            return newTemplate;
+        } catch (error) {
+            console.error('Error adding template:', error);
+            throw error;
+        }
+    }
+
+    async function updateTemplateInFirebase(templateId, templateData) {
+        try {
+            await updateDoc(doc(db, 'templates', templateId), {
+                patternThai: templateData.patternThai,
+                patternPronunciation: templateData.patternPronunciation,
+                example: templateData.example || '',
+                notes: templateData.notes || '',
+                category: templateData.category,
+                complexity: templateData.complexity,
+                updatedAt: new Date()
+            });
+
+            const templateIndex = templates.findIndex(t => t.id === templateId);
+            if (templateIndex !== -1) {
+                templates[templateIndex] = { id: templateId, ...templateData, updatedAt: new Date() };
+            }
+        } catch (error) {
+            console.error('Error updating template:', error);
+            throw error;
+        }
+    }
+
+    async function deleteTemplateFromFirebase(templateId) {
+        try {
+            await deleteDoc(doc(db, 'templates', templateId));
+            templates = templates.filter(t => t.id !== templateId);
+        } catch (error) {
+            console.error('Error deleting template:', error);
+            throw error;
+        }
+    }
+
+    // Category functions
+    async function addCategoryToFirebase(categoryData) {
+        try {
+            const docRef = await addDoc(collection(db, 'categories'), {
+                name: categoryData.name,
+                description: categoryData.description || '',
+                createdAt: new Date()
+            });
+            
+            const newCategory = { id: docRef.id, ...categoryData, createdAt: new Date() };
+            categories.push(newCategory);
+            return newCategory;
+        } catch (error) {
+            console.error('Error adding category:', error);
+            throw error;
+        }
+    }
+
+    async function updateCategoryInFirebase(categoryId, categoryData) {
+        try {
+            await updateDoc(doc(db, 'categories', categoryId), {
+                name: categoryData.name,
+                description: categoryData.description || '',
+                updatedAt: new Date()
+            });
+
+            const categoryIndex = categories.findIndex(c => c.id === categoryId);
+            if (categoryIndex !== -1) {
+                categories[categoryIndex] = { id: categoryId, ...categoryData, updatedAt: new Date() };
+            }
+        } catch (error) {
+            console.error('Error updating category:', error);
+            throw error;
+        }
+    }
+
+    async function deleteCategoryFromFirebase(categoryId) {
+        try {
+            await deleteDoc(doc(db, 'categories', categoryId));
+            categories = categories.filter(c => c.id !== categoryId);
+            
+            // Remove category from all items that reference it
+            vocabulary = vocabulary.map(word => {
+                if (word.category === categoryId) word.category = '';
+                return word;
+            });
+            phrases = phrases.map(phrase => {
+                if (phrase.category === categoryId) phrase.category = '';
+                return phrase;
+            });
+            templates = templates.map(template => {
+                if (template.category === categoryId) template.category = '';
+                return template;
+            });
+        } catch (error) {
+            console.error('Error deleting category:', error);
+            throw error;
+        }
+    }
+
+    // Navigation functions
+    function setActiveNav(activeButton) {
+        document.querySelectorAll('.nav-item').forEach(item => {
+            item.classList.remove('active');
+        });
+        if (activeButton) {
+            activeButton.classList.add('active');
+        }
+    }
+
+    window.showDashboard = function() {
+        setActiveNav(event.target);
+        document.getElementById('page-title').textContent = 'Dashboard';
+        document.getElementById('main-content').innerHTML = `
             <div class="dashboard-welcome">
                 <h1>Welcome to Joey's Thai Handbook</h1>
                 <p>Lets actually be a confident billingual!</p>
@@ -506,19 +884,19 @@
 
             <div class="dashboard-stats">
                 <div class="stat-card">
-                    <h3 id="vocab-count">0</h3>
+                    <h3 id="vocab-count">${vocabulary.length}</h3>
                     <p>Vocabulary Words</p>
                 </div>
                 <div class="stat-card">
-                    <h3 id="phrase-count">0</h3>
+                    <h3 id="phrase-count">${phrases.length}</h3>
                     <p>Phrases</p>
                 </div>
                 <div class="stat-card">
-                    <h3 id="template-count">0</h3>
+                    <h3 id="template-count">${templates.length}</h3>
                     <p>Sentence Templates</p>
                 </div>
                 <div class="stat-card">
-                    <h3 id="category-count">0</h3>
+                    <h3 id="category-count">${categories.length}</h3>
                     <p>Categories</p>
                 </div>
             </div>
@@ -531,398 +909,335 @@
                     <button class="action-btn" onclick="showCategories()">Manage Categories</button>
                 </div>
             </div>
-        </div>
-    </main>
+        `;
+    }
 
-    <script>
-        // Data storage
-        let vocabulary = JSON.parse(localStorage.getItem('vocabulary')) || [];
-        let phrases = JSON.parse(localStorage.getItem('phrases')) || [];
-        let templates = JSON.parse(localStorage.getItem('templates')) || [];
-        let categories = JSON.parse(localStorage.getItem('categories')) || [
-            { id: 1, name: 'Food', description: 'Food and dining related words' },
-            { id: 2, name: 'Travel', description: 'Travel and transportation' },
-            { id: 3, name: 'Daily Life', description: 'Everyday conversation' }
-        ];
+    window.showVocabulary = function() {
+        setActiveNav(event.target);
+        document.getElementById('page-title').textContent = 'Vocabulary Manager';
+        document.getElementById('main-content').innerHTML = `
+            <div class="vocab-header">
+                <button class="action-btn" onclick="showAddWordForm()" ${isLoading ? 'disabled' : ''}>+ Add New Word</button>
+                
+                <div class="filters">
+                    <select id="category-filter" onchange="filterVocabulary()" ${isLoading ? 'disabled' : ''}>
+                        <option value="">All Categories</option>
+                    </select>
+                    
+                    <select id="progress-filter" onchange="filterVocabulary()" ${isLoading ? 'disabled' : ''}>
+                        <option value="">All Progress Levels</option>
+                        <option value="new">New</option>
+                        <option value="recognize">Recognize</option>
+                        <option value="recall">Recall</option>
+                        <option value="confident">Confident</option>
+                    </select>
+                    
+                    <input type="text" id="search-filter" placeholder="Search words..." onkeyup="filterVocabulary()" ${isLoading ? 'disabled' : ''}>
+                </div>
+            </div>
+
+            <div class="vocab-grid" id="vocab-grid">
+                <!-- Vocabulary cards will be populated here -->
+            </div>
+
+            <!-- Add Word Modal -->
+            <div id="add-word-modal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <span class="close" onclick="closeAddWordForm()">&times;</span>
+                    <h3>Add New Word</h3>
+                    <form id="add-word-form" onsubmit="addWord(event)">
+                        <input type="text" id="thai-word" placeholder="Thai word" required>
+                        <input type="text" id="pronunciation" placeholder="Pronunciation (English)" required>
+                        <input type="text" id="translation" placeholder="English translation" required>
+                        <textarea id="example" placeholder="Example usage (optional)"></textarea>
+                        
+                        <select id="word-category" required>
+                            <option value="">Select Category</option>
+                        </select>
+                        
+                        <select id="word-progress" required>
+                            <option value="new">New</option>
+                            <option value="recognize">Recognize</option>
+                            <option value="recall">Recall</option>
+                            <option value="confident">Confident</option>
+                        </select>
+                        
+                        <button type="submit" class="action-btn">Add Word</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Edit Word Modal -->
+            <div id="edit-word-modal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <span class="close" onclick="closeEditWordForm()">&times;</span>
+                    <h3>Edit Word</h3>
+                    <form id="edit-word-form" onsubmit="updateWord(event)">
+                        <input type="hidden" id="edit-word-id">
+                        <input type="text" id="edit-thai-word" placeholder="Thai word" required>
+                        <input type="text" id="edit-pronunciation" placeholder="Pronunciation (English)" required>
+                        <input type="text" id="edit-translation" placeholder="English translation" required>
+                        <textarea id="edit-example" placeholder="Example usage (optional)"></textarea>
+                        
+                        <select id="edit-word-category" required>
+                            <option value="">Select Category</option>
+                        </select>
+                        
+                        <select id="edit-word-progress" required>
+                            <option value="new">New</option>
+                            <option value="recognize">Recognize</option>
+                            <option value="recall">Recall</option>
+                            <option value="confident">Confident</option>
+                        </select>
+                        
+                        <button type="submit" class="action-btn">Update Word</button>
+                    </form>
+                </div>
+            </div>
+        `;
         
-        // Save categories to localStorage if empty
-        if (!localStorage.getItem('categories')) {
-            localStorage.setItem('categories', JSON.stringify(categories));
-        }
+        populateCategoryDropdowns();
+        displayVocabulary();
+    }
 
-        // Navigation functions
-        function setActiveNav(activeButton) {
-            document.querySelectorAll('.nav-item').forEach(item => {
-                item.classList.remove('active');
-            });
-            activeButton.classList.add('active');
-        }
-
-        function showDashboard() {
-            setActiveNav(event.target);
-            document.getElementById('page-title').textContent = '🏠 Home';
-            document.getElementById('main-content').innerHTML = `
-                <div class="dashboard-welcome">
-                    <h1>Welcome to Your Thai Learning Journey</h1>
-                    <p>Track your vocabulary, phrases, and sentence templates all in one place</p>
-                </div>
-
-                <div class="dashboard-stats">
-                    <div class="stat-card">
-                        <h3 id="vocab-count">0</h3>
-                        <p>Vocabulary Words</p>
-                    </div>
-                    <div class="stat-card">
-                        <h3 id="phrase-count">0</h3>
-                        <p>Phrases</p>
-                    </div>
-                    <div class="stat-card">
-                        <h3 id="template-count">0</h3>
-                        <p>Sentence Templates</p>
-                    </div>
-                    <div class="stat-card">
-                        <h3 id="category-count">0</h3>
-                        <p>Categories</p>
-                    </div>
-                </div>
-
-                <div class="quick-actions">
-                    <h2>Quick Actions</h2>
-                    <div class="action-buttons">
-                        <button class="action-btn" onclick="showVocabulary()">Add New Word</button>
-                        <button class="action-btn" onclick="showPhrases()">Add New Phrase</button>
-                        <button class="action-btn" onclick="showCategories()">Manage Categories</button>
-                    </div>
-                </div>
-            `;
-            updateDashboardStats();
-        }
-
-        function showVocabulary() {
-            setActiveNav(event.target);
-            document.getElementById('page-title').textContent = 'Vocab Book';
-            document.getElementById('main-content').innerHTML = `
-                <div class="vocab-header">
-                    <button class="action-btn" onclick="showAddWordForm()">+ Add New Word</button>
+    window.showPhrases = function() {
+        setActiveNav(event.target);
+        document.getElementById('page-title').textContent = 'Phrasebook';
+        document.getElementById('main-content').innerHTML = `
+            <div class="vocab-header">
+                <button class="action-btn" onclick="showAddPhraseForm()" ${isLoading ? 'disabled' : ''}>+ Add New Phrase</button>
+                
+                <div class="filters">
+                    <select id="phrase-category-filter" onchange="filterPhrases()" ${isLoading ? 'disabled' : ''}>
+                        <option value="">All Categories</option>
+                    </select>
                     
-                    <div class="filters">
-                        <select id="category-filter" onchange="filterVocabulary()">
-                            <option value="">All Categories</option>
+                    <select id="phrase-progress-filter" onchange="filterPhrases()" ${isLoading ? 'disabled' : ''}>
+                        <option value="">All Progress Levels</option>
+                        <option value="new">New</option>
+                        <option value="recognize">Recognize</option>
+                        <option value="recall">Recall</option>
+                        <option value="confident">Confident</option>
+                    </select>
+                    
+                    <input type="text" id="phrase-search-filter" placeholder="Search phrases..." onkeyup="filterPhrases()" ${isLoading ? 'disabled' : ''}>
+                </div>
+            </div>
+
+            <div class="phrase-grid" id="phrase-grid">
+                <!-- Phrase cards will be populated here -->
+            </div>
+
+            <!-- Add Phrase Modal -->
+            <div id="add-phrase-modal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <span class="close" onclick="closeAddPhraseForm()">&times;</span>
+                    <h3>Add New Phrase</h3>
+                    <form id="add-phrase-form" onsubmit="addPhrase(event)">
+                        <input type="text" id="thai-phrase" placeholder="Thai phrase" required>
+                        <input type="text" id="phrase-pronunciation" placeholder="Pronunciation (English)" required>
+                        <input type="text" id="phrase-translation" placeholder="English translation" required>
+                        <textarea id="phrase-context" placeholder="When/where to use this phrase (optional)"></textarea>
+                        
+                        <select id="phrase-category" required>
+                            <option value="">Select Category</option>
                         </select>
                         
-                        <select id="progress-filter" onchange="filterVocabulary()">
-                            <option value="">All Progress Levels</option>
+                        <select id="phrase-progress" required>
                             <option value="new">New</option>
-                            <option value="recognise">Recognise</option>
+                            <option value="recognize">Recognize</option>
                             <option value="recall">Recall</option>
                             <option value="confident">Confident</option>
                         </select>
                         
-                        <input type="text" id="search-filter" placeholder="Search words..." onkeyup="filterVocabulary()">
-                    </div>
+                        <button type="submit" class="action-btn">Add Phrase</button>
+                    </form>
                 </div>
+            </div>
 
-                <div class="vocab-grid" id="vocab-grid">
-                    <!-- Vocabulary cards will be populated here -->
-                </div>
-
-                <!-- Add Word Modal -->
-                <div id="add-word-modal" class="modal" style="display: none;">
-                    <div class="modal-content">
-                        <span class="close" onclick="closeAddWordForm()">&times;</span>
-                        <h3>Add New Word</h3>
-                        <form id="add-word-form" onsubmit="addWord(event)">
-                            <input type="text" id="thai-word" placeholder="Thai word" required>
-                            <input type="text" id="pronunciation" placeholder="Pronunciation (English)" required>
-                            <input type="text" id="translation" placeholder="English translation" required>
-                            <textarea id="example" placeholder="Example usage (optional)"></textarea>
-                            
-                            <select id="word-category" required>
-                                <option value="">Select Category</option>
-                            </select>
-                            
-                            <select id="word-progress" required>
-                                <option value="new">New</option>
-                                <option value="recognise">Recognise</option>
-                                <option value="recall">Recall</option>
-                                <option value="confident">Confident</option>
-                            </select>
-                            
-                            <button type="submit" class="action-btn">Add Word</button>
-                        </form>
-                    </div>
-                </div>
-
-                <!-- Edit Word Modal -->
-                <div id="edit-word-modal" class="modal" style="display: none;">
-                    <div class="modal-content">
-                        <span class="close" onclick="closeEditWordForm()">&times;</span>
-                        <h3>Edit Word</h3>
-                        <form id="edit-word-form" onsubmit="updateWord(event)">
-                            <input type="hidden" id="edit-word-id">
-                            <input type="text" id="edit-thai-word" placeholder="Thai word" required>
-                            <input type="text" id="edit-pronunciation" placeholder="Pronunciation (English)" required>
-                            <input type="text" id="edit-translation" placeholder="English translation" required>
-                            <textarea id="edit-example" placeholder="Example usage (optional)"></textarea>
-                            
-                            <select id="edit-word-category" required>
-                                <option value="">Select Category</option>
-                            </select>
-                            
-                            <select id="edit-word-progress" required>
-                                <option value="new">New</option>
-                                <option value="recognise">Recognise</option>
-                                <option value="recall">Recall</option>
-                                <option value="confident">Confident</option>
-                            </select>
-                            
-                            <button type="submit" class="action-btn">Update Word</button>
-                        </form>
-                    </div>
-                </div>
-            `;
-            
-            loadCategories();
-            displayVocabulary();
-        }
-
-        function showPhrases() {
-            setActiveNav(event.target);
-            document.getElementById('page-title').textContent = 'Phrasebook';
-            document.getElementById('main-content').innerHTML = `
-                <div class="vocab-header">
-                    <button class="action-btn" onclick="showAddPhraseForm()">+ Add New Phrase</button>
-                    
-                    <div class="filters">
-                        <select id="phrase-category-filter" onchange="filterPhrases()">
-                            <option value="">All Categories</option>
+            <!-- Edit Phrase Modal -->
+            <div id="edit-phrase-modal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <span class="close" onclick="closeEditPhraseForm()">&times;</span>
+                    <h3>Edit Phrase</h3>
+                    <form id="edit-phrase-form" onsubmit="updatePhrase(event)">
+                        <input type="hidden" id="edit-phrase-id">
+                        <input type="text" id="edit-thai-phrase" placeholder="Thai phrase" required>
+                        <input type="text" id="edit-phrase-pronunciation" placeholder="Pronunciation (English)" required>
+                        <input type="text" id="edit-phrase-translation" placeholder="English translation" required>
+                        <textarea id="edit-phrase-context" placeholder="When/where to use this phrase (optional)"></textarea>
+                        
+                        <select id="edit-phrase-category" required>
+                            <option value="">Select Category</option>
                         </select>
                         
-                        <select id="phrase-progress-filter" onchange="filterPhrases()">
-                            <option value="">All Progress Levels</option>
+                        <select id="edit-phrase-progress" required>
                             <option value="new">New</option>
-                            <option value="recognise">Recognise</option>
+                            <option value="recognize">Recognize</option>
                             <option value="recall">Recall</option>
                             <option value="confident">Confident</option>
                         </select>
                         
-                        <input type="text" id="phrase-search-filter" placeholder="Search phrases..." onkeyup="filterPhrases()">
-                    </div>
+                        <button type="submit" class="action-btn">Update Phrase</button>
+                    </form>
                 </div>
+            </div>
+        `;
+        
+        populateCategoryDropdowns();
+        displayPhrases();
+    }
 
-                <div class="phrase-grid" id="phrase-grid">
-                    <!-- Phrase cards will be populated here -->
-                </div>
-
-                <!-- Add Phrase Modal -->
-                <div id="add-phrase-modal" class="modal" style="display: none;">
-                    <div class="modal-content">
-                        <span class="close" onclick="closeAddPhraseForm()">&times;</span>
-                        <h3>Add New Phrase</h3>
-                        <form id="add-phrase-form" onsubmit="addPhrase(event)">
-                            <input type="text" id="thai-phrase" placeholder="Thai phrase" required>
-                            <input type="text" id="phrase-pronunciation" placeholder="Pronunciation (English)" required>
-                            <input type="text" id="phrase-translation" placeholder="English translation" required>
-                            <textarea id="phrase-context" placeholder="When/where to use this phrase (optional)"></textarea>
-                            
-                            <select id="phrase-category" required>
-                                <option value="">Select Category</option>
-                            </select>
-                            
-                            <select id="phrase-progress" required>
-                                <option value="new">New</option>
-                                <option value="recognise">Recognise</option>
-                                <option value="recall">Recall</option>
-                                <option value="confident">Confident</option>
-                            </select>
-                            
-                            <button type="submit" class="action-btn">Add Phrase</button>
-                        </form>
-                    </div>
-                </div>
-
-                <!-- Edit Phrase Modal -->
-                <div id="edit-phrase-modal" class="modal" style="display: none;">
-                    <div class="modal-content">
-                        <span class="close" onclick="closeEditPhraseForm()">&times;</span>
-                        <h3>Edit Phrase</h3>
-                        <form id="edit-phrase-form" onsubmit="updatePhrase(event)">
-                            <input type="hidden" id="edit-phrase-id">
-                            <input type="text" id="edit-thai-phrase" placeholder="Thai phrase" required>
-                            <input type="text" id="edit-phrase-pronunciation" placeholder="Pronunciation (English)" required>
-                            <input type="text" id="edit-phrase-translation" placeholder="English translation" required>
-                            <textarea id="edit-phrase-context" placeholder="When/where to use this phrase (optional)"></textarea>
-                            
-                            <select id="edit-phrase-category" required>
-                                <option value="">Select Category</option>
-                            </select>
-                            
-                            <select id="edit-phrase-progress" required>
-                                <option value="new">New</option>
-                                <option value="recognise">Recognise</option>
-                                <option value="recall">Recall</option>
-                                <option value="confident">Confident</option>
-                            </select>
-                            
-                            <button type="submit" class="action-btn">Update Phrase</button>
-                        </form>
-                    </div>
-                </div>
-            `;
-            
-            loadCategoriesForPhrases();
-            displayPhrases();
-        }
-
-        function showTemplates() {
-            setActiveNav(event.target);
-            document.getElementById('page-title').textContent = 'Sentence Templates';
-            document.getElementById('main-content').innerHTML = `
-                <div class="vocab-header">
-                    <button class="action-btn" onclick="showAddTemplateForm()">+ Add New Template</button>
+    window.showTemplates = function() {
+        setActiveNav(event.target);
+        document.getElementById('page-title').textContent = 'Sentence Templates';
+        document.getElementById('main-content').innerHTML = `
+            <div class="vocab-header">
+                <button class="action-btn" onclick="showAddTemplateForm()" ${isLoading ? 'disabled' : ''}>+ Add New Template</button>
+                
+                <div class="filters">
+                    <select id="template-category-filter" onchange="filterTemplates()" ${isLoading ? 'disabled' : ''}>
+                        <option value="">All Categories</option>
+                    </select>
                     
-                    <div class="filters">
-                        <select id="template-category-filter" onchange="filterTemplates()">
-                            <option value="">All Categories</option>
+                    <select id="template-complexity-filter" onchange="filterTemplates()" ${isLoading ? 'disabled' : ''}>
+                        <option value="">All Complexity Levels</option>
+                        <option value="basic">Basic</option>
+                        <option value="intermediate">Intermediate</option>
+                        <option value="advanced">Advanced</option>
+                    </select>
+                    
+                    <input type="text" id="template-search-filter" placeholder="Search templates..." onkeyup="filterTemplates()" ${isLoading ? 'disabled' : ''}>
+                </div>
+            </div>
+
+            <div class="vocab-grid" id="template-grid">
+                <!-- Template cards will be populated here -->
+            </div>
+
+            <!-- Add Template Modal -->
+            <div id="add-template-modal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <span class="close" onclick="closeAddTemplateForm()">&times;</span>
+                    <h3>Add New Template</h3>
+                    <form id="add-template-form" onsubmit="addTemplate(event)">
+                        <input type="text" id="template-pattern-thai" placeholder="Sentence pattern in Thai" required>
+                        <input type="text" id="template-pattern-pronunciation" placeholder="Sentence pattern pronunciation (English)" required>
+                        <textarea id="template-example" placeholder="Example sentence using this pattern (optional)"></textarea>
+                        <textarea id="template-notes" placeholder="Grammar notes or usage tips (optional)"></textarea>
+                        
+                        <select id="template-category" required>
+                            <option value="">Select Category</option>
                         </select>
                         
-                        <select id="template-complexity-filter" onchange="filterTemplates()">
-                            <option value="">All Complexity Levels</option>
+                        <select id="template-complexity" required>
                             <option value="basic">Basic</option>
                             <option value="intermediate">Intermediate</option>
                             <option value="advanced">Advanced</option>
                         </select>
                         
-                        <input type="text" id="template-search-filter" placeholder="Search templates..." onkeyup="filterTemplates()">
-                    </div>
+                        <button type="submit" class="action-btn">Add Template</button>
+                    </form>
                 </div>
+            </div>
 
-                <div class="vocab-grid" id="template-grid">
-                    <!-- Template cards will be populated here -->
+            <!-- Edit Template Modal -->
+            <div id="edit-template-modal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <span class="close" onclick="closeEditTemplateForm()">&times;</span>
+                    <h3>Edit Template</h3>
+                    <form id="edit-template-form" onsubmit="updateTemplate(event)">
+                        <input type="hidden" id="edit-template-id">
+                        <input type="text" id="edit-template-pattern-thai" placeholder="Sentence pattern in Thai" required>
+                        <input type="text" id="edit-template-pattern-pronunciation" placeholder="Sentence pattern pronunciation (English)" required>
+                        <textarea id="edit-template-example" placeholder="Example sentence (optional)"></textarea>
+                        <textarea id="edit-template-notes" placeholder="Grammar notes (optional)"></textarea>
+                        
+                        <select id="edit-template-category" required>
+                            <option value="">Select Category</option>
+                        </select>
+                        
+                        <select id="edit-template-complexity" required>
+                            <option value="basic">Basic</option>
+                            <option value="intermediate">Intermediate</option>
+                            <option value="advanced">Advanced</option>
+                        </select>
+                        
+                        <button type="submit" class="action-btn">Update Template</button>
+                    </form>
                 </div>
+            </div>
+        `;
+        
+        populateCategoryDropdowns();
+        displayTemplates();
+    }
 
-                <!-- Add Template Modal -->
-                <div id="add-template-modal" class="modal" style="display: none;">
-                    <div class="modal-content">
-                        <span class="close" onclick="closeAddTemplateForm()">&times;</span>
-                        <h3>Add New Template</h3>
-                        <form id="add-template-form">
-                            <input type="text" id="template-pattern-thai" placeholder="Sentence pattern in Thai" required>
-                            <input type="text" id="template-pattern-pronunciation" placeholder="Sentence pattern pronunciation (English)" required>
-                            <textarea id="template-example" placeholder="Example sentence using this pattern (optional)"></textarea>
-                            <textarea id="template-notes" placeholder="Grammar notes or usage tips (optional)"></textarea>
-                            
-                            <select id="template-category" required>
-                                <option value="">Select Category</option>
-                            </select>
-                            
-                            <select id="template-complexity" required>
-                                <option value="basic">Basic</option>
-                                <option value="intermediate">Intermediate</option>
-                                <option value="advanced">Advanced</option>
-                            </select>
-                            
-                            <button type="button" class="action-btn" onclick="handleAddTemplate()">Add Template</button>
-                        </form>
-                    </div>
-                </div>
+    window.showCategories = function() {
+        setActiveNav(event.target);
+        document.getElementById('page-title').textContent = 'Category Manager';
+        document.getElementById('main-content').innerHTML = `
+            <div class="category-header">
+                <button class="action-btn" onclick="showAddCategoryForm()" ${isLoading ? 'disabled' : ''}>+ Add New Category</button>
+            </div>
 
-                <!-- Edit Template Modal -->
-                <div id="edit-template-modal" class="modal" style="display: none;">
-                    <div class="modal-content">
-                        <span class="close" onclick="closeEditTemplateForm()">&times;</span>
-                        <h3>Edit Template</h3>
-                        <form id="edit-template-form">
-                            <input type="hidden" id="edit-template-id">
-                            <input type="text" id="edit-template-pattern-thai" placeholder="Sentence pattern in Thai" required>
-                            <input type="text" id="edit-template-pattern-pronunciation" placeholder="Sentence pattern pronunciation (English)" required>
-                            <textarea id="edit-template-example" placeholder="Example sentence (optional)"></textarea>
-                            <textarea id="edit-template-notes" placeholder="Grammar notes (optional)"></textarea>
-                            
-                            <select id="edit-template-category" required>
-                                <option value="">Select Category</option>
-                            </select>
-                            
-                            <select id="edit-template-complexity" required>
-                                <option value="basic">Basic</option>
-                                <option value="intermediate">Intermediate</option>
-                                <option value="advanced">Advanced</option>
-                            </select>
-                            
-                            <button type="button" class="action-btn" onclick="handleUpdateTemplate()">Update Template</button>
-                        </form>
-                    </div>
+            <div class="category-list" id="category-list">
+                <!-- Categories will be populated here -->
+            </div>
+
+            <!-- Add Category Modal -->
+            <div id="add-category-modal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <span class="close" onclick="closeAddCategoryForm()">&times;</span>
+                    <h3>Add New Category</h3>
+                    <form id="add-category-form" onsubmit="addCategory(event)">
+                        <input type="text" id="category-name" placeholder="Category name" required>
+                        <textarea id="category-description" placeholder="Description (optional)"></textarea>
+                        <button type="submit" class="action-btn">Add Category</button>
+                    </form>
                 </div>
-            `;
+            </div>
+
+            <!-- Edit Category Modal -->
+            <div id="edit-category-modal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <span class="close" onclick="closeEditCategoryForm()">&times;</span>
+                    <h3>Edit Category</h3>
+                    <form id="edit-category-form" onsubmit="updateCategory(event)">
+                        <input type="hidden" id="edit-category-id">
+                        <input type="text" id="edit-category-name" placeholder="Category name" required>
+                        <textarea id="edit-category-description" placeholder="Description (optional)"></textarea>
+                        <button type="submit" class="action-btn">Update Category</button>
+                    </form>
+                </div>
+            </div>
+        `;
+        
+        displayCategories();
+    }
+
+    // Vocabulary Management Functions
+    window.showAddWordForm = function() {
+        populateCategoryDropdowns();
+        document.getElementById('add-word-modal').style.display = 'block';
+    }
+
+    window.closeAddWordForm = function() {
+        document.getElementById('add-word-modal').style.display = 'none';
+        document.getElementById('add-word-form').reset();
+    }
+
+    window.addWord = async function(event) {
+        event.preventDefault();
+        
+        const submitBtn = event.target.querySelector('button[type="submit"]');
+        const originalText = submitBtn.textContent;
+        
+        try {
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Adding...';
             
-            loadCategoriesForTemplates();
-            displayTemplates();
-            
-            // Ensure category dropdowns are populated after modal HTML is created
-            setTimeout(() => {
-                populateCategoryDropdowns();
-            }, 100);
-        }
-
-        function showCategories() {
-            setActiveNav(event.target);
-            document.getElementById('page-title').textContent = 'Category Manager';
-            document.getElementById('main-content').innerHTML = `
-                <div class="category-header">
-                    <button class="action-btn" onclick="showAddCategoryForm()">+ Add New Category</button>
-                </div>
-
-                <div class="category-list" id="category-list">
-                    <!-- Categories will be populated here -->
-                </div>
-
-                <!-- Add Category Modal -->
-                <div id="add-category-modal" class="modal" style="display: none;">
-                    <div class="modal-content">
-                        <span class="close" onclick="closeAddCategoryForm()">&times;</span>
-                        <h3>Add New Category</h3>
-                        <form id="add-category-form" onsubmit="addCategory(event)">
-                            <input type="text" id="category-name" placeholder="Category name" required>
-                            <textarea id="category-description" placeholder="Description (optional)"></textarea>
-                            <button type="submit" class="action-btn">Add Category</button>
-                        </form>
-                    </div>
-                </div>
-
-                <!-- Edit Category Modal -->
-                <div id="edit-category-modal" class="modal" style="display: none;">
-                    <div class="modal-content">
-                        <span class="close" onclick="closeEditCategoryForm()">&times;</span>
-                        <h3>Edit Category</h3>
-                        <form id="edit-category-form" onsubmit="updateCategory(event)">
-                            <input type="hidden" id="edit-category-id">
-                            <input type="text" id="edit-category-name" placeholder="Category name" required>
-                            <textarea id="edit-category-description" placeholder="Description (optional)"></textarea>
-                            <button type="submit" class="action-btn">Update Category</button>
-                        </form>
-                    </div>
-                </div>
-            `;
-            
-            displayCategories();
-        }
-
-        // Vocabulary Management Functions
-        function showAddWordForm() {
-            populateCategoryDropdowns();
-            document.getElementById('add-word-modal').style.display = 'block';
-        }
-
-        function closeAddWordForm() {
-            document.getElementById('add-word-modal').style.display = 'none';
-            document.getElementById('add-word-form').reset();
-        }
-
-        function addWord(event) {
-            event.preventDefault();
-            
-            const word = {
-                id: Date.now(),
+            const wordData = {
                 thai: document.getElementById('thai-word').value,
                 pronunciation: document.getElementById('pronunciation').value,
                 translation: document.getElementById('translation').value,
@@ -931,900 +1246,684 @@
                 progress: document.getElementById('word-progress').value
             };
             
-            vocabulary.push(word);
-            localStorage.setItem('vocabulary', JSON.stringify(vocabulary));
-            
+            await addWordToFirebase(wordData);
             closeAddWordForm();
             displayVocabulary();
-            updateDashboardStats();
+            
+        } catch (error) {
+            alert('Error adding word: ' + error.message);
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.textContent = originalText;
         }
+    }
 
-        function editWord(id) {
-            const word = vocabulary.find(w => w.id === id);
-            if (!word) return;
-            
-            populateCategoryDropdowns();
-            
-            document.getElementById('edit-word-id').value = word.id;
-            document.getElementById('edit-thai-word').value = word.thai;
-            document.getElementById('edit-pronunciation').value = word.pronunciation;
-            document.getElementById('edit-translation').value = word.translation;
-            document.getElementById('edit-example').value = word.example || '';
-            document.getElementById('edit-word-category').value = word.category;
-            document.getElementById('edit-word-progress').value = word.progress;
-            
-            document.getElementById('edit-word-modal').style.display = 'block';
-        }
+    window.editWord = function(id) {
+        const word = vocabulary.find(w => w.id === id);
+        if (!word) return;
+        
+        populateCategoryDropdowns();
+        
+        document.getElementById('edit-word-id').value = word.id;
+        document.getElementById('edit-thai-word').value = word.thai;
+        document.getElementById('edit-pronunciation').value = word.pronunciation;
+        document.getElementById('edit-translation').value = word.translation;
+        document.getElementById('edit-example').value = word.example || '';
+        document.getElementById('edit-word-category').value = word.category;
+        document.getElementById('edit-word-progress').value = word.progress;
+        
+        document.getElementById('edit-word-modal').style.display = 'block';
+    }
 
-        function closeEditWordForm() {
-            document.getElementById('edit-word-modal').style.display = 'none';
-            document.getElementById('edit-word-form').reset();
-        }
+    window.closeEditWordForm = function() {
+        document.getElementById('edit-word-modal').style.display = 'none';
+        document.getElementById('edit-word-form').reset();
+    }
 
-        function updateWord(event) {
-            event.preventDefault();
+    window.updateWord = async function(event) {
+        event.preventDefault();
+        
+        const submitBtn = event.target.querySelector('button[type="submit"]');
+        const originalText = submitBtn.textContent;
+        
+        try {
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Updating...';
             
-            const id = parseInt(document.getElementById('edit-word-id').value);
-            const wordIndex = vocabulary.findIndex(w => w.id === id);
+            const wordId = document.getElementById('edit-word-id').value;
+            const wordData = {
+                thai: document.getElementById('edit-thai-word').value,
+                pronunciation: document.getElementById('edit-pronunciation').value,
+                translation: document.getElementById('edit-translation').value,
+                example: document.getElementById('edit-example').value,
+                category: document.getElementById('edit-word-category').value,
+                progress: document.getElementById('edit-word-progress').value
+            };
             
-            if (wordIndex !== -1) {
-                vocabulary[wordIndex] = {
-                    id: id,
-                    thai: document.getElementById('edit-thai-word').value,
-                    pronunciation: document.getElementById('edit-pronunciation').value,
-                    translation: document.getElementById('edit-translation').value,
-                    example: document.getElementById('edit-example').value,
-                    category: document.getElementById('edit-word-category').value,
-                    progress: document.getElementById('edit-word-progress').value
-                };
-                
-                localStorage.setItem('vocabulary', JSON.stringify(vocabulary));
-                closeEditWordForm();
-                displayVocabulary();
-                updateDashboardStats();
-            }
-        }
-
-        function deleteWord(id) {
-            if (confirm('Are you sure you want to delete this word?')) {
-                vocabulary = vocabulary.filter(w => w.id !== id);
-                localStorage.setItem('vocabulary', JSON.stringify(vocabulary));
-                displayVocabulary();
-                updateDashboardStats();
-            }
-        }
-
-        function displayVocabulary() {
-            const grid = document.getElementById('vocab-grid');
-            if (!grid) return;
-            
-            let filteredVocab = [...vocabulary];
-            
-            const categoryFilter = document.getElementById('category-filter')?.value;
-            const progressFilter = document.getElementById('progress-filter')?.value;
-            const searchFilter = document.getElementById('search-filter')?.value.toLowerCase();
-            
-            if (categoryFilter) {
-                filteredVocab = filteredVocab.filter(word => word.category === categoryFilter);
-            }
-            
-            if (progressFilter) {
-                filteredVocab = filteredVocab.filter(word => word.progress === progressFilter);
-            }
-            
-            if (searchFilter) {
-                filteredVocab = filteredVocab.filter(word => 
-                    word.thai.toLowerCase().includes(searchFilter) ||
-                    word.translation.toLowerCase().includes(searchFilter) ||
-                    word.pronunciation.toLowerCase().includes(searchFilter)
-                );
-            }
-            
-            if (filteredVocab.length === 0) {
-                grid.innerHTML = '<p style="text-align: center; color: #7f8c8d; grid-column: 1 / -1;">No vocabulary words found.</p>';
-                return;
-            }
-            
-            grid.innerHTML = filteredVocab.map(word => {
-                const category = categories.find(c => c.id == word.category);
-                return `
-                    <div class="vocab-card">
-                        <div class="vocab-card-header">
-                            <div>
-                                <div class="thai-word">${word.thai}</div>
-                                <div class="pronunciation">${word.pronunciation}</div>
-                            </div>
-                            <div class="card-actions">
-                                <button class="card-btn edit-btn" onclick="editWord(${word.id})" title="Edit">✏️</button>
-                                <button class="card-btn delete-btn" onclick="deleteWord(${word.id})" title="Delete">🗑️</button>
-                            </div>
-                        </div>
-                        
-                        <div class="translation">${word.translation}</div>
-                        
-                        ${word.example ? `<div class="example">"${word.example}"</div>` : ''}
-                        
-                        <div class="card-meta">
-                            <div>
-                                <span class="progress-badge progress-${word.progress}">${word.progress}</span>
-                                <span class="category-badge">${category ? category.name : 'Unknown'}</span>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-        }
-
-        function filterVocabulary() {
+            await updateWordInFirebase(wordId, wordData);
+            closeEditWordForm();
             displayVocabulary();
+            
+        } catch (error) {
+            alert('Error updating word: ' + error.message);
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.textContent = originalText;
         }
+    }
 
-        // Phrase Management Functions
-        function showAddPhraseForm() {
-            populateCategoryDropdowns();
-            document.getElementById('add-phrase-modal').style.display = 'block';
-        }
+    window.deleteWord = async function(id) {
+        if (!confirm('Are you sure you want to delete this word?')) return;
+        try {
+            await deleteWordFromFirebase(id);
+            displayVocabulary();
+        } catch (error) {
+            alert('Error deleting word: ' + error.message);
+         }
+     }
 
-        function closeAddPhraseForm() {
-            document.getElementById('add-phrase-modal').style.display = 'none';
-            document.getElementById('add-phrase-form').reset();
-        }
-
-        function addPhrase(event) {
-            event.preventDefault();
-            
-            const phrase = {
-                id: Date.now(),
-                thai: document.getElementById('thai-phrase').value,
-                pronunciation: document.getElementById('phrase-pronunciation').value,
-                translation: document.getElementById('phrase-translation').value,
-                context: document.getElementById('phrase-context').value,
-                category: document.getElementById('phrase-category').value,
-                progress: document.getElementById('phrase-progress').value
-            };
-            
-            phrases.push(phrase);
-            localStorage.setItem('phrases', JSON.stringify(phrases));
-            
-            closeAddPhraseForm();
-            displayPhrases();
-            updateDashboardStats();
-        }
-
-        function editPhrase(id) {
-            const phrase = phrases.find(p => p.id === id);
-            if (!phrase) return;
-            
-            populateCategoryDropdowns();
-            
-            document.getElementById('edit-phrase-id').value = phrase.id;
-            document.getElementById('edit-thai-phrase').value = phrase.thai;
-            document.getElementById('edit-phrase-pronunciation').value = phrase.pronunciation;
-            document.getElementById('edit-phrase-translation').value = phrase.translation;
-            document.getElementById('edit-phrase-context').value = phrase.context || '';
-            document.getElementById('edit-phrase-category').value = phrase.category;
-            document.getElementById('edit-phrase-progress').value = phrase.progress;
-            
-            document.getElementById('edit-phrase-modal').style.display = 'block';
-        }
-
-        function closeEditPhraseForm() {
-            document.getElementById('edit-phrase-modal').style.display = 'none';
-            document.getElementById('edit-phrase-form').reset();
-        }
-
-        function updatePhrase(event) {
-            event.preventDefault();
-            
-            const id = parseInt(document.getElementById('edit-phrase-id').value);
-            const phraseIndex = phrases.findIndex(p => p.id === id);
-            
-            if (phraseIndex !== -1) {
-                phrases[phraseIndex] = {
-                    id: id,
-                    thai: document.getElementById('edit-thai-phrase').value,
-                    pronunciation: document.getElementById('edit-phrase-pronunciation').value,
-                    translation: document.getElementById('edit-phrase-translation').value,
-                    context: document.getElementById('edit-phrase-context').value,
-                    category: document.getElementById('edit-phrase-category').value,
-                    progress: document.getElementById('edit-phrase-progress').value
-                };
-                
-                localStorage.setItem('phrases', JSON.stringify(phrases));
-                closeEditPhraseForm();
-                displayPhrases();
-                updateDashboardStats();
-            }
-        }
-
-        function deletePhrase(id) {
-            if (confirm('Are you sure you want to delete this phrase?')) {
-                phrases = phrases.filter(p => p.id !== id);
-                localStorage.setItem('phrases', JSON.stringify(phrases));
-                displayPhrases();
-                updateDashboardStats();
-            }
-        }
-
-        function displayPhrases() {
-            const grid = document.getElementById('phrase-grid');
-            if (!grid) return;
-            
-            let filteredPhrases = [...phrases];
-            
-            const categoryFilter = document.getElementById('phrase-category-filter')?.value;
-            const progressFilter = document.getElementById('phrase-progress-filter')?.value;
-            const searchFilter = document.getElementById('phrase-search-filter')?.value.toLowerCase();
-            
-            if (categoryFilter) {
-                filteredPhrases = filteredPhrases.filter(phrase => phrase.category === categoryFilter);
-            }
-            
-            if (progressFilter) {
-                filteredPhrases = filteredPhrases.filter(phrase => phrase.progress === progressFilter);
-            }
-            
-            if (searchFilter) {
-                filteredPhrases = filteredPhrases.filter(phrase => 
-                    phrase.thai.toLowerCase().includes(searchFilter) ||
-                    phrase.translation.toLowerCase().includes(searchFilter) ||
-                    phrase.pronunciation.toLowerCase().includes(searchFilter)
-                );
-            }
-            
-            if (filteredPhrases.length === 0) {
-                grid.innerHTML = '<p style="text-align: center; color: #7f8c8d; grid-column: 1 / -1;">No phrases found.</p>';
-                return;
-            }
-            
-            grid.innerHTML = filteredPhrases.map(phrase => {
-                const category = categories.find(c => c.id == phrase.category);
-                return `
-                    <div class="vocab-card">
-                        <div class="vocab-card-header">
-                            <div>
-                                <div class="thai-word">${phrase.thai}</div>
-                                <div class="pronunciation">${phrase.pronunciation}</div>
-                            </div>
-                            <div class="card-actions">
-                                <button class="card-btn edit-btn" onclick="editPhrase(${phrase.id})" title="Edit">✏️</button>
-                                <button class="card-btn delete-btn" onclick="deletePhrase(${phrase.id})" title="Delete">🗑️</button>
-                            </div>
-                        </div>
-                        
-                        <div class="translation">${phrase.translation}</div>
-                        
-                        ${phrase.context ? `<div class="example">Context: "${phrase.context}"</div>` : ''}
-                        
-                        <div class="card-meta">
-                            <div>
-                                <span class="progress-badge progress-${phrase.progress}">${phrase.progress}</span>
-                                <span class="category-badge">${category ? category.name : 'Unknown'}</span>
-                            </div>
-                        </div>
+   function displayVocabulary() {
+    const grid = document.getElementById('vocab-grid');
+    if (!grid) return;
+    
+    let filteredVocab = [...vocabulary];
+    
+    const categoryFilter = document.getElementById('category-filter')?.value;
+    const progressFilter = document.getElementById('progress-filter')?.value;
+    const searchFilter = document.getElementById('search-filter')?.value.toLowerCase();
+    
+    if (categoryFilter) {
+        filteredVocab = filteredVocab.filter(word => word.category === categoryFilter);
+    }
+    
+    if (progressFilter) {
+        filteredVocab = filteredVocab.filter(word => word.progress === progressFilter);
+    }
+    
+    if (searchFilter) {
+        filteredVocab = filteredVocab.filter(word => 
+            word.thai.toLowerCase().includes(searchFilter) ||
+            word.translation.toLowerCase().includes(searchFilter) ||
+            word.pronunciation.toLowerCase().includes(searchFilter)
+        );
+    }
+    
+    if (filteredVocab.length === 0) {
+        grid.innerHTML = '<p style="text-align: center; color: #7f8c8d; grid-column: 1 / -1;">No vocabulary words found.</p>';
+        return;
+    }
+    
+    grid.innerHTML = filteredVocab.map(word => {
+        const category = categories.find(c => c.id === word.category);
+        return `
+            <div class="vocab-card">
+                <div class="vocab-card-header">
+                    <div>
+                        <div class="thai-word">${word.thai}</div>
+                        <div class="pronunciation">${word.pronunciation}</div>
                     </div>
-                `;
-            }).join('');
-        }
-
-        function filterPhrases() {
-            displayPhrases();
-        }
-
-        // Template Management Functions
-        function showAddTemplateForm() {
-            // First populate the dropdowns, then show the modal
-            setTimeout(() => {
-                populateCategoryDropdowns();
-                document.getElementById('add-template-modal').style.display = 'block';
-            }, 50);
-        }
-
-        function closeAddTemplateForm() {
-            console.log("closeAddTemplateForm called");
-            const modal = document.getElementById('add-template-modal');
-            if (modal) modal.style.display = 'none';
-            
-            // Manually clear form fields
-            const fields = [
-                'template-pattern-thai',
-                'template-pattern-pronunciation', 
-                'template-example',
-                'template-notes',
-                'template-category',
-                'template-complexity'
-            ];
-            
-            fields.forEach(fieldId => {
-                const field = document.getElementById(fieldId);
-                if (field) {
-                    if (field.tagName === 'SELECT') {
-                        field.selectedIndex = 0;
-                    } else {
-                        field.value = '';
-                    }
-                }
-            });
-            console.log("Form fields cleared successfully");
-        }
-
-        function closeEditTemplateForm() {
-            const modal = document.getElementById('edit-template-modal');
-            if (modal) modal.style.display = 'none';
-            
-            // Clear edit form fields
-            const fields = [
-                'edit-template-pattern-thai',
-                'edit-template-pattern-pronunciation', 
-                'edit-template-example',
-                'edit-template-notes',
-                'edit-template-category',
-                'edit-template-complexity'
-            ];
-            
-            fields.forEach(fieldId => {
-                const field = document.getElementById(fieldId);
-                if (field) {
-                    if (field.tagName === 'SELECT') {
-                        field.selectedIndex = 0;
-                    } else {
-                        field.value = '';
-                    }
-                }
-            });
-        }
-
-        function addTemplate(event) {
-            event.preventDefault();
-            
-            const template = {
-                id: Date.now(),
-                pattern: document.getElementById('template-pattern').value,
-                example: document.getElementById('template-example').value,
-                notes: document.getElementById('template-notes').value,
-                category: document.getElementById('template-category').value,
-                complexity: document.getElementById('template-complexity').value
-            };
-            
-            templates.push(template);
-            localStorage.setItem('templates', JSON.stringify(templates));
-            
-            closeAddTemplateForm();
-            displayTemplates();
-            updateDashboardStats();
-        }
-
-        function editTemplate(id) {
-            const template = templates.find(t => t.id === id);
-            if (!template) return;
-            
-            populateCategoryDropdowns();
-            
-            document.getElementById('edit-template-id').value = template.id;
-            document.getElementById('edit-template-pattern').value = template.pattern;
-            document.getElementById('edit-template-example').value = template.example;
-            document.getElementById('edit-template-notes').value = template.notes || '';
-            document.getElementById('edit-template-category').value = template.category;
-            document.getElementById('edit-template-complexity').value = template.complexity;
-            
-            document.getElementById('edit-template-modal').style.display = 'block';
-        }
-
-        function closeEditTemplateForm() {
-            document.getElementById('edit-template-modal').style.display = 'none';
-            document.getElementById('edit-template-form').reset();
-        }
-
-        function updateTemplate(event) {
-            event.preventDefault();
-            
-            const id = parseInt(document.getElementById('edit-template-id').value);
-            const templateIndex = templates.findIndex(t => t.id === id);
-            
-            if (templateIndex !== -1) {
-                templates[templateIndex] = {
-                    id: id,
-                    pattern: document.getElementById('edit-template-pattern').value,
-                    example: document.getElementById('edit-template-example').value,
-                    notes: document.getElementById('edit-template-notes').value,
-                    category: document.getElementById('edit-template-category').value,
-                    complexity: document.getElementById('edit-template-complexity').value
-                };
-                
-                localStorage.setItem('templates', JSON.stringify(templates));
-                closeEditTemplateForm();
-                displayTemplates();
-                updateDashboardStats();
-            }
-        }
-
-        function deleteTemplate(id) {
-            if (confirm('Are you sure you want to delete this template?')) {
-                templates = templates.filter(t => t.id !== id);
-                localStorage.setItem('templates', JSON.stringify(templates));
-                displayTemplates();
-                updateDashboardStats();
-            }
-        }
-
-        function displayTemplates() {
-            console.log("displayTemplates called, templates array length:", templates.length);
-            const grid = document.getElementById('template-grid');
-            if (!grid) {
-                console.error("template-grid element not found");
-                return;
-            }
-            
-            let filteredTemplates = [...templates];
-            console.log("Templates before filtering:", filteredTemplates);
-            
-            const categoryFilter = document.getElementById('template-category-filter')?.value;
-            const complexityFilter = document.getElementById('template-complexity-filter')?.value;
-            const searchFilter = document.getElementById('template-search-filter')?.value?.toLowerCase();
-            
-            if (categoryFilter) {
-                filteredTemplates = filteredTemplates.filter(template => template.category === categoryFilter);
-            }
-            
-            if (complexityFilter) {
-                filteredTemplates = filteredTemplates.filter(template => template.complexity === complexityFilter);
-            }
-            
-            if (searchFilter) {
-                filteredTemplates = filteredTemplates.filter(template => 
-                    (template.patternThai && template.patternThai.toLowerCase().includes(searchFilter)) ||
-                    (template.patternPronunciation && template.patternPronunciation.toLowerCase().includes(searchFilter)) ||
-                    (template.example && template.example.toLowerCase().includes(searchFilter)) ||
-                    (template.pattern && template.pattern.toLowerCase().includes(searchFilter)) // For backwards compatibility
-                );
-            }
-            
-            console.log("Templates after filtering:", filteredTemplates);
-            
-            if (filteredTemplates.length === 0) {
-                grid.innerHTML = '<p style="text-align: center; color: #7f8c8d; grid-column: 1 / -1;">No templates found.</p>';
-                return;
-            }
-            
-            try {
-                grid.innerHTML = filteredTemplates.map(template => {
-                    const category = categories.find(c => c.id == template.category);
-                    // Handle both new format (patternThai) and old format (pattern) for backwards compatibility
-                    const displayPattern = template.patternThai || template.pattern || 'No pattern';
-                    const displayPronunciation = template.patternPronunciation || 'Pattern';
-                    
-                    return `
-                        <div class="vocab-card">
-                            <div class="vocab-card-header">
-                                <div>
-                                    <div class="thai-word">${displayPattern}</div>
-                                    <div class="pronunciation">${displayPronunciation}</div>
-                                </div>
-                                <div class="card-actions">
-                                    <button class="card-btn edit-btn" onclick="handleEditTemplate(${template.id})" title="Edit">✏️</button>
-                                    <button class="card-btn delete-btn" onclick="deleteTemplate(${template.id})" title="Delete">🗑️</button>
-                                </div>
-                            </div>
-                            
-                            ${template.example ? `<div class="translation">Example: ${template.example}</div>` : ''}
-                            
-                            ${template.notes ? `<div class="example">Notes: "${template.notes}"</div>` : ''}
-                            
-                            <div class="card-meta">
-                                <div>
-                                    <span class="progress-badge progress-${template.complexity}">${template.complexity}</span>
-                                    <span class="category-badge">${category ? category.name : 'Unknown'}</span>
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                }).join('');
-                console.log("Templates displayed successfully");
-            } catch (error) {
-                console.error("Error displaying templates:", error);
-                grid.innerHTML = '<p style="text-align: center; color: #e74c3c;">Error displaying templates. Check console for details.</p>';
-            }
-        }
-
-        function filterTemplates() {
-            displayTemplates();
-        }
-
-        // Category Management Functions
-        function showAddCategoryForm() {
-            document.getElementById('add-category-modal').style.display = 'block';
-        }
-
-        function closeAddCategoryForm() {
-            document.getElementById('add-category-modal').style.display = 'none';
-            document.getElementById('add-category-form').reset();
-        }
-
-        function addCategory(event) {
-            event.preventDefault();
-            
-            const category = {
-                id: Date.now(),
-                name: document.getElementById('category-name').value,
-                description: document.getElementById('category-description').value
-            };
-            
-            categories.push(category);
-            localStorage.setItem('categories', JSON.stringify(categories));
-            
-            closeAddCategoryForm();
-            displayCategories();
-            updateDashboardStats();
-        }
-
-        function editCategory(id) {
-            const category = categories.find(c => c.id === id);
-            if (!category) return;
-            
-            document.getElementById('edit-category-id').value = category.id;
-            document.getElementById('edit-category-name').value = category.name;
-            document.getElementById('edit-category-description').value = category.description || '';
-            
-            document.getElementById('edit-category-modal').style.display = 'block';
-        }
-
-        function closeEditCategoryForm() {
-            document.getElementById('edit-category-modal').style.display = 'none';
-            document.getElementById('edit-category-form').reset();
-        }
-
-        function updateCategory(event) {
-            event.preventDefault();
-            
-            const id = parseInt(document.getElementById('edit-category-id').value);
-            const categoryIndex = categories.findIndex(c => c.id === id);
-            
-            if (categoryIndex !== -1) {
-                categories[categoryIndex] = {
-                    id: id,
-                    name: document.getElementById('edit-category-name').value,
-                    description: document.getElementById('edit-category-description').value
-                };
-                
-                localStorage.setItem('categories', JSON.stringify(categories));
-                closeEditCategoryForm();
-                displayCategories();
-                updateDashboardStats();
-            }
-        }
-
-        function deleteCategory(id) {
-            const wordsInCategory = vocabulary.filter(w => w.category == id);
-            const phrasesInCategory = phrases.filter(p => p.category == id);
-            const templatesInCategory = templates.filter(t => t.category == id);
-            const totalItems = wordsInCategory.length + phrasesInCategory.length + templatesInCategory.length;
-            
-            if (totalItems > 0) {
-                if (!confirm(`This category has ${totalItems} items. Delete anyway? Items will become uncategorized.`)) {
-                    return;
-                }
-                
-                // Remove category from all items
-                vocabulary = vocabulary.map(word => {
-                    if (word.category == id) word.category = '';
-                    return word;
-                });
-                phrases = phrases.map(phrase => {
-                    if (phrase.category == id) phrase.category = '';
-                    return phrase;
-                });
-                templates = templates.map(template => {
-                    if (template.category == id) template.category = '';
-                    return template;
-                });
-                
-                localStorage.setItem('vocabulary', JSON.stringify(vocabulary));
-                localStorage.setItem('phrases', JSON.stringify(phrases));
-                localStorage.setItem('templates', JSON.stringify(templates));
-            }
-            
-            categories = categories.filter(c => c.id !== id);
-            localStorage.setItem('categories', JSON.stringify(categories));
-            displayCategories();
-            updateDashboardStats();
-        }
-
-        function displayCategories() {
-            const list = document.getElementById('category-list');
-            if (!list) return;
-            
-            if (categories.length === 0) {
-                list.innerHTML = '<p style="text-align: center; color: #7f8c8d;">No categories found. Add your first category!</p>';
-                return;
-            }
-            
-            list.innerHTML = categories.map(category => {
-                const wordCount = vocabulary.filter(w => w.category == category.id).length;
-                const phraseCount = phrases.filter(p => p.category == category.id).length;
-                const templateCount = templates.filter(t => t.category == category.id).length;
-                const totalCount = wordCount + phraseCount + templateCount;
-                
-                return `
-                    <div class="category-item">
-                        <div class="category-info">
-                            <h3>${category.name}</h3>
-                            <p>${category.description || 'No description'} • ${totalCount} items (${wordCount} words, ${phraseCount} phrases, ${templateCount} templates)</p>
-                        </div>
-                        <div class="category-actions">
-                            <button class="category-btn edit-category-btn" onclick="editCategory(${category.id})">Edit</button>
-                            <button class="category-btn delete-category-btn" onclick="deleteCategory(${category.id})">Delete</button>
-                        </div>
+                    <div class="card-actions">
+                        <button class="card-btn edit-btn" onclick="editWord('${word.id}')" title="Edit" ${isLoading ? 'disabled' : ''}>✏️</button>
+                        <button class="card-btn delete-btn" onclick="deleteWord('${word.id}')" title="Delete" ${isLoading ? 'disabled' : ''}>🗑️</button>
                     </div>
-                `;
-            }).join('');
-        }
+                </div>
+                
+                <div class="translation">${word.translation}</div>
+                
+                ${word.example ? `<div class="example">"${word.example}"</div>` : ''}
+                
+                <div class="card-meta">
+                    <div>
+                        <span class="progress-badge progress-${word.progress}">${word.progress}</span>
+                        <span class="category-badge">${category ? category.name : 'Unknown'}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
 
-        // Utility Functions
-        function loadCategories() {
-            populateCategoryDropdowns();
-            populateCategoryFilter();
-        }
+window.filterVocabulary = function() {
+    displayVocabulary();
+}
 
-        function loadCategoriesForPhrases() {
-            populateCategoryDropdowns();
-            populatePhraseCategoryFilter();
-        }
+// Phrase Management Functions
+window.showAddPhraseForm = function() {
+    populateCategoryDropdowns();
+    document.getElementById('add-phrase-modal').style.display = 'block';
+}
 
-        function loadCategoriesForTemplates() {
-            populateCategoryDropdowns();
-            populateTemplateCategoryFilter();
-        }
+window.closeAddPhraseForm = function() {
+    document.getElementById('add-phrase-modal').style.display = 'none';
+    document.getElementById('add-phrase-form').reset();
+}
 
-        function populateCategoryDropdowns() {
-            const selects = ['word-category', 'edit-word-category', 'phrase-category', 'edit-phrase-category', 'template-category', 'edit-template-category'];
-            
-            selects.forEach(selectId => {
-                const select = document.getElementById(selectId);
-                if (select) {
-                    const currentValue = select.value;
-                    select.innerHTML = '<option value="">Select Category</option>' +
-                        categories.map(cat => `<option value="${cat.id}">${cat.name}</option>`).join('');
-                    select.value = currentValue;
-                }
-            });
-        }
+window.addPhrase = async function(event) {
+    event.preventDefault();
+    
+    const submitBtn = event.target.querySelector('button[type="submit"]');
+    const originalText = submitBtn.textContent;
+    
+    try {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Adding...';
+        
+        const phraseData = {
+            thai: document.getElementById('thai-phrase').value,
+            pronunciation: document.getElementById('phrase-pronunciation').value,
+            translation: document.getElementById('phrase-translation').value,
+            context: document.getElementById('phrase-context').value,
+            category: document.getElementById('phrase-category').value,
+            progress: document.getElementById('phrase-progress').value
+        };
+        
+        await addPhraseToFirebase(phraseData);
+        closeAddPhraseForm();
+        displayPhrases();
+        
+    } catch (error) {
+        alert('Error adding phrase: ' + error.message);
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = originalText;
+    }
+}
 
-        function populateCategoryFilter() {
-            const filter = document.getElementById('category-filter');
-            if (filter) {
-                const currentValue = filter.value;
-                filter.innerHTML = '<option value="">All Categories</option>' +
-                    categories.map(cat => `<option value="${cat.id}">${cat.name}</option>`).join('');
-                filter.value = currentValue;
-            }
-        }
+window.editPhrase = function(id) {
+    const phrase = phrases.find(p => p.id === id);
+    if (!phrase) return;
+    
+    populateCategoryDropdowns();
+    
+    document.getElementById('edit-phrase-id').value = phrase.id;
+    document.getElementById('edit-thai-phrase').value = phrase.thai;
+    document.getElementById('edit-phrase-pronunciation').value = phrase.pronunciation;
+    document.getElementById('edit-phrase-translation').value = phrase.translation;
+    document.getElementById('edit-phrase-context').value = phrase.context || '';
+    document.getElementById('edit-phrase-category').value = phrase.category;
+    document.getElementById('edit-phrase-progress').value = phrase.progress;
+    
+    document.getElementById('edit-phrase-modal').style.display = 'block';
+}
 
-        function populatePhraseCategoryFilter() {
-            const filter = document.getElementById('phrase-category-filter');
-            if (filter) {
-                const currentValue = filter.value;
-                filter.innerHTML = '<option value="">All Categories</option>' +
-                    categories.map(cat => `<option value="${cat.id}">${cat.name}</option>`).join('');
-                filter.value = currentValue;
-            }
-        }
+window.closeEditPhraseForm = function() {
+    document.getElementById('edit-phrase-modal').style.display = 'none';
+    document.getElementById('edit-phrase-form').reset();
+}
 
-        function populateTemplateCategoryFilter() {
-            const filter = document.getElementById('template-category-filter');
-            if (filter) {
-                const currentValue = filter.value;
-                filter.innerHTML = '<option value="">All Categories</option>' +
-                    categories.map(cat => `<option value="${cat.id}">${cat.name}</option>`).join('');
-                filter.value = currentValue;
-            }
-        }
+window.updatePhrase = async function(event) {
+    event.preventDefault();
+    
+    const submitBtn = event.target.querySelector('button[type="submit"]');
+    const originalText = submitBtn.textContent;
+    
+    try {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Updating...';
+        
+        const phraseId = document.getElementById('edit-phrase-id').value;
+        const phraseData = {
+            thai: document.getElementById('edit-thai-phrase').value,
+            pronunciation: document.getElementById('edit-phrase-pronunciation').value,
+            translation: document.getElementById('edit-phrase-translation').value,
+            context: document.getElementById('edit-phrase-context').value,
+            category: document.getElementById('edit-phrase-category').value,
+            progress: document.getElementById('edit-phrase-progress').value
+        };
+        
+        await updatePhraseInFirebase(phraseId, phraseData);
+        closeEditPhraseForm();
+        displayPhrases();
+        
+    } catch (error) {
+        alert('Error updating phrase: ' + error.message);
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = originalText;
+    }
+}
 
-        function updateDashboardStats() {
-            const vocabCount = document.getElementById('vocab-count');
-            const phraseCount = document.getElementById('phrase-count');
-            const templateCount = document.getElementById('template-count');
-            const categoryCount = document.getElementById('category-count');
-            
-            if (vocabCount) vocabCount.textContent = vocabulary.length;
-            if (phraseCount) phraseCount.textContent = phrases.length;
-            if (templateCount) templateCount.textContent = templates.length;
-            if (categoryCount) categoryCount.textContent = categories.length;
-        }
+window.deletePhrase = async function(id) {
+    if (!confirm('Are you sure you want to delete this phrase?')) return;
+    
+    try {
+        await deletePhraseFromFirebase(id);
+        displayPhrases();
+    } catch (error) {
+        alert('Error deleting phrase: ' + error.message);
+    }
+}
 
-        // Close modals when clicking outside
-        window.onclick = function(event) {
-            const modals = document.querySelectorAll('.modal');
-            modals.forEach(modal => {
-                if (event.target === modal) {
-                    modal.style.display = 'none';
-                }
-            });
-        }
+function displayPhrases() {
+    const grid = document.getElementById('phrase-grid');
+    if (!grid) return;
+    
+    let filteredPhrases = [...phrases];
+    
+    const categoryFilter = document.getElementById('phrase-category-filter')?.value;
+    const progressFilter = document.getElementById('phrase-progress-filter')?.value;
+    const searchFilter = document.getElementById('phrase-search-filter')?.value.toLowerCase();
+    
+    if (categoryFilter) {
+        filteredPhrases = filteredPhrases.filter(phrase => phrase.category === categoryFilter);
+    }
+    
+    if (progressFilter) {
+        filteredPhrases = filteredPhrases.filter(phrase => phrase.progress === progressFilter);
+    }
+    
+    if (searchFilter) {
+        filteredPhrases = filteredPhrases.filter(phrase => 
+            phrase.thai.toLowerCase().includes(searchFilter) ||
+            phrase.translation.toLowerCase().includes(searchFilter) ||
+            phrase.pronunciation.toLowerCase().includes(searchFilter)
+        );
+    }
+    
+    if (filteredPhrases.length === 0) {
+        grid.innerHTML = '<p style="text-align: center; color: #7f8c8d; grid-column: 1 / -1;">No phrases found.</p>';
+        return;
+    }
+    
+    grid.innerHTML = filteredPhrases.map(phrase => {
+        const category = categories.find(c => c.id === phrase.category);
+        return `
+            <div class="vocab-card">
+                <div class="vocab-card-header">
+                    <div>
+                        <div class="thai-word">${phrase.thai}</div>
+                        <div class="pronunciation">${phrase.pronunciation}</div>
+                    </div>
+                    <div class="card-actions">
+                        <button class="card-btn edit-btn" onclick="editPhrase('${phrase.id}')" title="Edit" ${isLoading ? 'disabled' : ''}>✏️</button>
+                        <button class="card-btn delete-btn" onclick="deletePhrase('${phrase.id}')" title="Delete" ${isLoading ? 'disabled' : ''}>🗑️</button>
+                    </div>
+                </div>
+                
+                <div class="translation">${phrase.translation}</div>
+                
+                ${phrase.context ? `<div class="example">Context: "${phrase.context}"</div>` : ''}
+                
+                <div class="card-meta">
+                    <div>
+                        <span class="progress-badge progress-${phrase.progress}">${phrase.progress}</span>
+                        <span class="category-badge">${category ? category.name : 'Unknown'}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
 
-        // Initialize when page loads
-        window.onload = function() {
-            updateDashboardStats();
-        }
+window.filterPhrases = function() {
+    displayPhrases();
+}
 
-        // Template handler functions (defined globally to ensure they're accessible)
-        function handleAddTemplate() {
-            console.log("handleAddTemplate function called");
-            
-            try {
-                // Check if elements exist first
-                const patternThaiEl = document.getElementById('template-pattern-thai');
-                const patternPronunciationEl = document.getElementById('template-pattern-pronunciation');
-                const exampleEl = document.getElementById('template-example');
-                const notesEl = document.getElementById('template-notes');
-                const categoryEl = document.getElementById('template-category');
-                const complexityEl = document.getElementById('template-complexity');
-                
-                console.log("Form elements found:", {
-                    patternThai: !!patternThaiEl,
-                    patternPronunciation: !!patternPronunciationEl,
-                    example: !!exampleEl,
-                    notes: !!notesEl,
-                    category: !!categoryEl,
-                    complexity: !!complexityEl
-                });
-                
-                if (!patternThaiEl || !patternPronunciationEl || !categoryEl || !complexityEl) {
-                    console.error("Missing required form elements");
-                    alert('Some form elements are missing. Please try refreshing the page.');
-                    return;
-                }
-                
-                const patternThai = patternThaiEl.value.trim();
-                const patternPronunciation = patternPronunciationEl.value.trim();
-                const example = exampleEl ? exampleEl.value.trim() : '';
-                const notes = notesEl ? notesEl.value.trim() : '';
-                const category = categoryEl.value;
-                const complexity = complexityEl.value;
-                
-                console.log('Form values:', {
-                    patternThai,
-                    patternPronunciation,
-                    example,
-                    notes,
-                    category,
-                    complexity
-                });
-                
-                if (!patternThai || !patternPronunciation || !category || !complexity) {
-                    console.error("Missing required field values");
-                    alert('Please fill in all required fields (Thai pattern, pronunciation, category, and complexity)');
-                    return;
-                }
-                
-                const template = {
-                    id: Date.now(),
-                    patternThai: patternThai,
-                    patternPronunciation: patternPronunciation,
-                    example: example,
-                    notes: notes,
-                    category: category,
-                    complexity: complexity
-                };
-                
-                console.log('Creating template:', template);
-                
-                templates.push(template);
-                localStorage.setItem('templates', JSON.stringify(templates));
-                
-                console.log('Template saved. Total templates:', templates.length);
-                
-                closeAddTemplateForm();
-                displayTemplates();
-                updateDashboardStats();
-                
-            } catch (error) {
-                console.error('Error in handleAddTemplate:', error);
-                alert('Error adding template: ' + error.message);
-            }
-        }
+// Template Management Functions
+window.showAddTemplateForm = function() {
+    populateCategoryDropdowns();
+    document.getElementById('add-template-modal').style.display = 'block';
+}
 
-        function handleEditTemplate(id) {
-            console.log("handleEditTemplate called with id:", id);
-            const template = templates.find(t => t.id === id);
-            if (!template) {
-                console.error("Template not found with id:", id);
-                return;
-            }
-            
-            console.log("Template found:", template);
-            
-            // Check if all form elements exist before trying to populate them
-            const formElements = {
-                'edit-template-id': document.getElementById('edit-template-id'),
-                'edit-template-pattern-thai': document.getElementById('edit-template-pattern-thai'),
-                'edit-template-pattern-pronunciation': document.getElementById('edit-template-pattern-pronunciation'),
-                'edit-template-example': document.getElementById('edit-template-example'),
-                'edit-template-notes': document.getElementById('edit-template-notes'),
-                'edit-template-category': document.getElementById('edit-template-category'),
-                'edit-template-complexity': document.getElementById('edit-template-complexity')
-            };
-            
-            console.log("Form elements check:", formElements);
-            
-            // Find which element is missing
-            for (let [elementId, element] of Object.entries(formElements)) {
-                if (!element) {
-                    console.error(`Missing form element: ${elementId}`);
-                    alert(`Edit form not properly loaded. Missing element: ${elementId}. Please try refreshing the page.`);
-                    return;
-                }
-            }
-            
-            // Populate category dropdowns first
-            populateCategoryDropdowns();
-            
-            // Wait a bit for dropdowns to populate, then fill the form
-            setTimeout(() => {
-                try {
-                    formElements['edit-template-id'].value = template.id;
-                    formElements['edit-template-pattern-thai'].value = template.patternThai || template.pattern || '';
-                    formElements['edit-template-pattern-pronunciation'].value = template.patternPronunciation || '';
-                    formElements['edit-template-example'].value = template.example || '';
-                    formElements['edit-template-notes'].value = template.notes || '';
-                    formElements['edit-template-category'].value = template.category;
-                    formElements['edit-template-complexity'].value = template.complexity;
-                    
-                    console.log("Form populated successfully, showing modal");
-                    document.getElementById('edit-template-modal').style.display = 'block';
-                } catch (error) {
-                    console.error("Error populating form:", error);
-                    alert("Error loading template data into form: " + error.message);
-                }
-            }, 100);
-        }
+window.closeAddTemplateForm = function() {
+    document.getElementById('add-template-modal').style.display = 'none';
+    document.getElementById('add-template-form').reset();
+}
 
-        // Edit template handler
-        function handleUpdateTemplate() {
-            console.log("handleUpdateTemplate called");
-            
-            try {
-                const id = parseInt(document.getElementById('edit-template-id').value);
-                const templateIndex = templates.findIndex(t => t.id === id);
+window.addTemplate = async function(event) {
+    event.preventDefault();
+    
+    const submitBtn = event.target.querySelector('button[type="submit"]');
+    const originalText = submitBtn.textContent;
+    
+    try {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Adding...';
+        
+        const templateData = {
+            patternThai: document.getElementById('template-pattern-thai').value,
+            patternPronunciation: document.getElementById('template-pattern-pronunciation').value,
+            example: document.getElementById('template-example').value,
+            notes: document.getElementById('template-notes').value,
+            category: document.getElementById('template-category').value,
+            complexity: document.getElementById('template-complexity').value
+        };
+        
+        await addTemplateToFirebase(templateData);
+        closeAddTemplateForm();
+        displayTemplates();
+        
+    } catch (error) {
+        alert('Error adding template: ' + error.message);
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = originalText;
+    }
+}
+
+window.editTemplate = function(id) {
+    const template = templates.find(t => t.id === id);
+    if (!template) return;
+    
+    populateCategoryDropdowns();
+    
+    document.getElementById('edit-template-id').value = template.id;
+    document.getElementById('edit-template-pattern-thai').value = template.patternThai || template.pattern || '';
+    document.getElementById('edit-template-pattern-pronunciation').value = template.patternPronunciation || '';
+    document.getElementById('edit-template-example').value = template.example || '';
+    document.getElementById('edit-template-notes').value = template.notes || '';
+    document.getElementById('edit-template-category').value = template.category;
+    document.getElementById('edit-template-complexity').value = template.complexity;
+    
+    document.getElementById('edit-template-modal').style.display = 'block';
+}
+
+window.closeEditTemplateForm = function() {
+    document.getElementById('edit-template-modal').style.display = 'none';
+    document.getElementById('edit-template-form').reset();
+}
+
+window.updateTemplate = async function(event) {
+    event.preventDefault();
+    
+    const submitBtn = event.target.querySelector('button[type="submit"]');
+    const originalText = submitBtn.textContent;
+    
+    try {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Updating...';
+        
+        const templateId = document.getElementById('edit-template-id').value;
+        const templateData = {
+            patternThai: document.getElementById('edit-template-pattern-thai').value,
+            patternPronunciation: document.getElementById('edit-template-pattern-pronunciation').value,
+            example: document.getElementById('edit-template-example').value,
+            notes: document.getElementById('edit-template-notes').value,
+            category: document.getElementById('edit-template-category').value,
+            complexity: document.getElementById('edit-template-complexity').value
+        };
+        
+        await updateTemplateInFirebase(templateId, templateData);
+        closeEditTemplateForm();
+        displayTemplates();
+        
+    } catch (error) {
+        alert('Error updating template: ' + error.message);
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = originalText;
+    }
+}
+
+window.deleteTemplate = async function(id) {
+    if (!confirm('Are you sure you want to delete this template?')) return;
+    
+    try {
+        await deleteTemplateFromFirebase(id);
+        displayTemplates();
+    } catch (error) {
+        alert('Error deleting template: ' + error.message);
+    }
+}
+
+function displayTemplates() {
+    const grid = document.getElementById('template-grid');
+    if (!grid) return;
+    
+    let filteredTemplates = [...templates];
+    
+    const categoryFilter = document.getElementById('template-category-filter')?.value;
+    const complexityFilter = document.getElementById('template-complexity-filter')?.value;
+    const searchFilter = document.getElementById('template-search-filter')?.value.toLowerCase();
+    
+    if (categoryFilter) {
+        filteredTemplates = filteredTemplates.filter(template => template.category === categoryFilter);
+    }
+    
+    if (complexityFilter) {
+        filteredTemplates = filteredTemplates.filter(template => template.complexity === complexityFilter);
+    }
+    
+    if (searchFilter) {
+        filteredTemplates = filteredTemplates.filter(template => 
+            (template.patternThai && template.patternThai.toLowerCase().includes(searchFilter)) ||
+            (template.patternPronunciation && template.patternPronunciation.toLowerCase().includes(searchFilter)) ||
+            (template.example && template.example.toLowerCase().includes(searchFilter)) ||
+            (template.pattern && template.pattern.toLowerCase().includes(searchFilter)) // For backwards compatibility
+        );
+    }
+    
+    if (filteredTemplates.length === 0) {
+        grid.innerHTML = '<p style="text-align: center; color: #7f8c8d; grid-column: 1 / -1;">No templates found.</p>';
+        return;
+    }
+    
+    grid.innerHTML = filteredTemplates.map(template => {
+        const category = categories.find(c => c.id === template.category);
+        // Handle both new format (patternThai) and old format (pattern) for backwards compatibility
+        const displayPattern = template.patternThai || template.pattern || '';
+        const displayPronunciation = template.patternPronunciation || 'Pattern';
+        
+        return `
+            <div class="vocab-card">
+                <div class="vocab-card-header">
+                    <div>
+                        <div class="thai-word">${displayPattern}</div>
+                        <div class="pronunciation">${displayPronunciation}</div>
+                    </div>
+                    <div class="card-actions">
+                        <button class="card-btn edit-btn" onclick="editTemplate('${template.id}')" title="Edit" ${isLoading ? 'disabled' : ''}>✏️</button>
+                        <button class="card-btn delete-btn" onclick="deleteTemplate('${template.id}')" title="Delete" ${isLoading ? 'disabled' : ''}>🗑️</button>
+                    </div>
+                </div>
                 
-                if (templateIndex === -1) {
-                    alert('Template not found');
-                    return;
-                }
+                ${template.example ? `<div class="translation">Example: ${template.example}</div>` : ''}
                 
-                const patternThai = document.getElementById('edit-template-pattern-thai').value.trim();
-                const patternPronunciation = document.getElementById('edit-template-pattern-pronunciation').value.trim();
-                const example = document.getElementById('edit-template-example').value.trim();
-                const notes = document.getElementById('edit-template-notes').value.trim();
-                const category = document.getElementById('edit-template-category').value;
-                const complexity = document.getElementById('edit-template-complexity').value;
+                ${template.notes ? `<div class="example">Notes: "${template.notes}"</div>` : ''}
                 
-                if (!patternThai || !patternPronunciation || !category || !complexity) {
-                    alert('Please fill in all required fields');
-                    return;
-                }
-                
-                templates[templateIndex] = {
-                    id: id,
-                    patternThai: patternThai,
-                    patternPronunciation: patternPronunciation,
-                    example: example,
-                    notes: notes,
-                    category: category,
-                    complexity: complexity
-                };
-                
-                localStorage.setItem('templates', JSON.stringify(templates));
-                console.log('Template updated successfully');
-                
-                closeEditTemplateForm();
-                displayTemplates();
-                updateDashboardStats();
-                
-            } catch (error) {
-                console.error('Error updating template:', error);
-                alert('Error updating template: ' + error.message);
-            }
+                <div class="card-meta">
+                    <div>
+                        <span class="progress-badge progress-${template.complexity}">${template.complexity}</span>
+                        <span class="category-badge">${category ? category.name : 'Unknown'}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+window.filterTemplates = function() {
+    displayTemplates();
+}
+
+// Category Management Functions
+window.showAddCategoryForm = function() {
+    document.getElementById('add-category-modal').style.display = 'block';
+}
+
+window.closeAddCategoryForm = function() {
+    document.getElementById('add-category-modal').style.display = 'none';
+    document.getElementById('add-category-form').reset();
+}
+
+window.addCategory = async function(event) {
+    event.preventDefault();
+    
+    const submitBtn = event.target.querySelector('button[type="submit"]');
+    const originalText = submitBtn.textContent;
+    
+    try {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Adding...';
+        
+        const categoryData = {
+            name: document.getElementById('category-name').value,
+            description: document.getElementById('category-description').value
+        };
+        
+        await addCategoryToFirebase(categoryData);
+        closeAddCategoryForm();
+        displayCategories();
+        
+    } catch (error) {
+        alert('Error adding category: ' + error.message);
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = originalText;
+    }
+}
+
+window.editCategory = function(id) {
+    const category = categories.find(c => c.id === id);
+    if (!category) return;
+    
+    document.getElementById('edit-category-id').value = category.id;
+    document.getElementById('edit-category-name').value = category.name;
+    document.getElementById('edit-category-description').value = category.description || '';
+    
+    document.getElementById('edit-category-modal').style.display = 'block';
+}
+
+window.closeEditCategoryForm = function() {
+    document.getElementById('edit-category-modal').style.display = 'none';
+    document.getElementById('edit-category-form').reset();
+}
+
+window.updateCategory = async function(event) {
+    event.preventDefault();
+    
+    const submitBtn = event.target.querySelector('button[type="submit"]');
+    const originalText = submitBtn.textContent;
+    
+    try {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Updating...';
+        
+        const categoryId = document.getElementById('edit-category-id').value;
+        const categoryData = {
+            name: document.getElementById('edit-category-name').value,
+            description: document.getElementById('edit-category-description').value
+        };
+        
+        await updateCategoryInFirebase(categoryId, categoryData);
+        closeEditCategoryForm();
+        displayCategories();
+        
+    } catch (error) {
+        alert('Error updating category: ' + error.message);
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = originalText;
+    }
+}
+
+window.deleteCategory = async function(id) {
+    const wordsInCategory = vocabulary.filter(w => w.category === id);
+    const phrasesInCategory = phrases.filter(p => p.category === id);
+    const templatesInCategory = templates.filter(t => t.category === id);
+    const totalItems = wordsInCategory.length + phrasesInCategory.length + templatesInCategory.length;
+    
+    if (totalItems > 0) {
+        if (!confirm(`This category has ${totalItems} items. Delete anyway? Items will become uncategorized.`)) {
+            return;
         }
+    } else if (!confirm('Are you sure you want to delete this category?')) {
+        return;
+    }
+    
+    try {
+        await deleteCategoryFromFirebase(id);
+        displayCategories();
+        
+        // Refresh other views if they're currently displayed
+        if (document.getElementById('vocab-grid')) displayVocabulary();
+        if (document.getElementById('phrase-grid')) displayPhrases();
+        if (document.getElementById('template-grid')) displayTemplates();
+        
+    } catch (error) {
+        alert('Error deleting category: ' + error.message);
+    }
+}
+
+function displayCategories() {
+    const list = document.getElementById('category-list');
+    if (!list) return;
+    
+    if (categories.length === 0) {
+        list.innerHTML = '<p style="text-align: center; color: #7f8c8d;">No categories found. Add your first category!</p>';
+        return;
+    }
+    
+    list.innerHTML = categories.map(category => {
+        const wordCount = vocabulary.filter(w => w.category === category.id).length;
+        const phraseCount = phrases.filter(p => p.category === category.id).length;
+        const templateCount = templates.filter(t => t.category === category.id).length;
+        const totalCount = wordCount + phraseCount + templateCount;
+        
+        return `
+            <div class="category-item">
+                <div class="category-info">
+                    <h3>${category.name}</h3>
+                    <p>${category.description || 'No description'} • ${totalCount} items (${wordCount} words, ${phraseCount} phrases, ${templateCount} templates)</p>
+                </div>
+                <div class="category-actions">
+                    <button class="category-btn edit-category-btn" onclick="editCategory('${category.id}')" ${isLoading ? 'disabled' : ''}>Edit</button>
+                    <button class="category-btn delete-category-btn" onclick="deleteCategory('${category.id}')" ${isLoading ? 'disabled' : ''}>Delete</button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// Utility Functions
+function populateCategoryDropdowns() {
+    const selects = ['word-category', 'edit-word-category', 'phrase-category', 'edit-phrase-category', 'template-category', 'edit-template-category'];
+    
+    selects.forEach(selectId => {
+        const select = document.getElementById(selectId);
+        if (select) {
+            const currentValue = select.value;
+            select.innerHTML = '<option value="">Select Category</option>' +
+                categories.map(cat => `<option value="${cat.id}">${cat.name}</option>`).join('');
+            select.value = currentValue;
+        }
+    });
+
+    // Also populate filter dropdowns
+    const filterSelects = ['category-filter', 'phrase-category-filter', 'template-category-filter'];
+    filterSelects.forEach(selectId => {
+        const select = document.getElementById(selectId);
+        if (select) {
+            const currentValue = select.value;
+            select.innerHTML = '<option value="">All Categories</option>' +
+                categories.map(cat => `<option value="${cat.id}">${cat.name}</option>`).join('');
+            select.value = currentValue;
+        }
+    });
+}
+
+// Close modals when clicking outside
+window.onclick = function(event) {
+    const modals = document.querySelectorAll('.modal');
+    modals.forEach(modal => {
+        if (event.target === modal) {
+            modal.style.display = 'none';
+        }
+    });
+}
+
+// Initialize Firebase and load data when page loads
+window.addEventListener('load', async function() {
+    try {
+        await loadAllData();
+        showDashboard();
+    } catch (error) {
+        console.error('Failed to initialize app:', error);
+        showError('Failed to initialize the application. Please check your Firebase configuration and try again.');
+    }
+});
+     
     </script>
+
 </body>
 </html>
