@@ -52,7 +52,7 @@
             right: 0;
             margin: 0 auto;
             display: block;
-            width: 180px;
+            width: 150px;
             height: auto;
         }
 
@@ -512,14 +512,29 @@
         <img src="Images/book.png" alt="Thai Handbook Pic" class="sidebar-pic">
 
         <button class="nav-item active" onclick="showDashboard()">🏠 Home</button>
-        <button class="nav-item" onclick="showVocabulary()">📚 Vocab</button>
+        <button class="nav-item" onclick="showVocabulary()">📘 Vocab</button>
         <button class="nav-item" onclick="showPhrases()">💬 Phrases</button>
         <button class="nav-item" onclick="showTemplates()">📝 Templates</button>
         <button class="nav-item" onclick="showCategories()">🏷️ Categories</button>
+        <button class="nav-item" onclick="logoutUser()" style="border-top: 1px solid #34495e; margin-top: 20px;">🚪 Logout</button>
 
     <img src="Images/book-row.png" alt="Footer Image" class="sidebar-footer">
 
     </nav>
+
+    <!-- Login Modal -->
+    <div id="login-modal" class="modal" style="display: block; z-index: 2000;">
+        <div class="modal-content" style="max-width: 400px; text-align: center;">
+            <h3>🔐 Login to Joey's Thai Handbook</h3>
+            <form id="login-form" onsubmit="loginUser(event)">
+                <input type="email" id="login-email" placeholder="Email" required style="width: 100%; margin-bottom: 15px;">
+                <input type="password" id="login-password" placeholder="Password" required style="width: 100%; margin-bottom: 15px;">
+                <button type="submit" class="action-btn" id="login-btn">Login</button>
+                <div id="login-error" style="color: #e74c3c; margin-top: 10px; display: none;"></div>
+            </form>
+        </div>
+    </div>
+
 
     <!-- Main Content Area -->
     <main class="main-content">
@@ -549,6 +564,13 @@
         orderBy 
     } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 
+    import { 
+    getAuth, 
+    signInWithEmailAndPassword, 
+    signOut, 
+    onAuthStateChanged 
+    } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+
     // TODO: Replace with your Firebase config
     const firebaseConfig = {
         apiKey: "AIzaSyD4MxUq4-wYegdyi-djyclsEOtMI_Zd6sU",
@@ -564,12 +586,97 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
+    // Initialize auth (after app exists)
+    const auth = getAuth(app);
+    let currentUser = null;
+
+
     // Global variables
     let vocabulary = [];
     let phrases = [];
     let templates = [];
     let categories = [];
     let isLoading = false;
+
+    // Authentication functions
+    async function loginUser(event) {
+        event.preventDefault();
+        
+        const email = document.getElementById('login-email').value;
+        const password = document.getElementById('login-password').value;
+        const loginBtn = document.getElementById('login-btn');
+        const errorDiv = document.getElementById('login-error');
+        
+        // Show loading state
+        loginBtn.textContent = 'Logging in...';
+        loginBtn.disabled = true;
+        errorDiv.style.display = 'none';
+        
+        try {
+            const userCredential = await signInWithEmailAndPassword(auth, email, password);
+            currentUser = userCredential.user;
+            
+            // Hide login modal
+            document.getElementById('login-modal').style.display = 'none';
+            
+            // Load the app
+            await loadAllData();
+            showDashboard();
+            
+            console.log('Login successful!');
+            
+        } catch (error) {
+            console.error('Login error:', error);
+            errorDiv.style.display = 'block';
+            errorDiv.textContent = getErrorMessage(error.code);
+        } finally {
+            loginBtn.textContent = 'Login';
+            loginBtn.disabled = false;
+        }
+    }
+
+    function getErrorMessage(errorCode) {
+        switch(errorCode) {
+            case 'auth/user-not-found':
+                return 'No account found with this email';
+            case 'auth/wrong-password':
+                return 'Incorrect password';
+            case 'auth/invalid-email':
+                return 'Invalid email address';
+            case 'auth/too-many-requests':
+                return 'Too many failed attempts. Try again later.';
+            default:
+                return 'Login failed. Please try again.';
+        }
+    }
+
+    // Logout function
+    async function logoutUser() {
+        try {
+            await signOut(auth);
+            currentUser = null;
+            document.getElementById('login-modal').style.display = 'block';
+            document.getElementById('main-content').innerHTML = '<div class="loading">Please login to continue...</div>';
+        } catch (error) {
+            console.error('Logout error:', error);
+        }
+    }
+
+    // Check authentication state
+    onAuthStateChanged(auth, (user) => {
+        if (user) {
+            currentUser = user;
+            console.log('User is signed in:', user.email);
+        } else {
+            currentUser = null;
+            console.log('User is signed out');
+        }
+    });   
+
+    // Make authentication functions globally accessible
+    window.loginUser = loginUser;
+    window.logoutUser = logoutUser;
+
 
     // Firebase helper functions
     async function loadAllData() {
@@ -914,7 +1021,7 @@
 
     window.showVocabulary = function() {
         setActiveNav(event.target);
-        document.getElementById('page-title').textContent = 'Vocabulary Manager';
+        document.getElementById('page-title').textContent = 'Vocab Book';
         document.getElementById('main-content').innerHTML = `
             <div class="vocab-header">
                 <button class="action-btn" onclick="showAddWordForm()" ${isLoading ? 'disabled' : ''}>+ Add New Word</button>
@@ -927,7 +1034,7 @@
                     <select id="progress-filter" onchange="filterVocabulary()" ${isLoading ? 'disabled' : ''}>
                         <option value="">All Progress Levels</option>
                         <option value="new">New</option>
-                        <option value="recognize">Recognize</option>
+                        <option value="recognise">Recognise</option>
                         <option value="recall">Recall</option>
                         <option value="confident">Confident</option>
                     </select>
@@ -957,7 +1064,7 @@
                         
                         <select id="word-progress" required>
                             <option value="new">New</option>
-                            <option value="recognize">Recognize</option>
+                            <option value="recognise">Recognise</option>
                             <option value="recall">Recall</option>
                             <option value="confident">Confident</option>
                         </select>
@@ -985,7 +1092,7 @@
                         
                         <select id="edit-word-progress" required>
                             <option value="new">New</option>
-                            <option value="recognize">Recognize</option>
+                            <option value="recognise">Recognise</option>
                             <option value="recall">Recall</option>
                             <option value="confident">Confident</option>
                         </select>
@@ -1015,7 +1122,7 @@
                     <select id="phrase-progress-filter" onchange="filterPhrases()" ${isLoading ? 'disabled' : ''}>
                         <option value="">All Progress Levels</option>
                         <option value="new">New</option>
-                        <option value="recognize">Recognize</option>
+                        <option value="recognise">Recognise</option>
                         <option value="recall">Recall</option>
                         <option value="confident">Confident</option>
                     </select>
@@ -1045,7 +1152,7 @@
                         
                         <select id="phrase-progress" required>
                             <option value="new">New</option>
-                            <option value="recognize">Recognize</option>
+                            <option value="recognise">Recognise</option>
                             <option value="recall">Recall</option>
                             <option value="confident">Confident</option>
                         </select>
@@ -1073,7 +1180,7 @@
                         
                         <select id="edit-phrase-progress" required>
                             <option value="new">New</option>
-                            <option value="recognize">Recognize</option>
+                            <option value="recognise">Recognise</option>
                             <option value="recall">Recall</option>
                             <option value="confident">Confident</option>
                         </select>
@@ -1912,15 +2019,35 @@ window.onclick = function(event) {
     });
 }
 
-// Initialize Firebase and load data when page loads
-window.addEventListener('load', async function() {
-    try {
-        await loadAllData();
-        showDashboard();
-    } catch (error) {
-        console.error('Failed to initialize app:', error);
-        showError('Failed to initialize the application. Please check your Firebase configuration and try again.');
-    }
+// Initialize Firebase and load data after authentication
+window.addEventListener('load', function() {
+    // Show loading while checking authentication state
+    document.getElementById('main-content').innerHTML = '<div class="loading">Checking authentication...</div>';
+    
+    // Wait for Firebase to determine auth state
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+        if (user) {
+            // User is already logged in - load the app
+            currentUser = user;
+            document.getElementById('login-modal').style.display = 'none';
+            
+            try {
+                await loadAllData();
+                showDashboard();
+                console.log('Auto-login successful for:', user.email);
+            } catch (error) {
+                console.error('Error loading data:', error);
+                showError('Failed to load data. Please refresh the page.');
+            }
+        } else {
+            // No user logged in - show login form
+            document.getElementById('login-modal').style.display = 'block';
+            document.getElementById('main-content').innerHTML = '<div class="loading">Please login to continue...</div>';
+        }
+        
+        // Clean up the listener after first check
+        unsubscribe();
+    });
 });
      
     </script>
